@@ -1,3 +1,5 @@
+from collections.abc import Sequence
+from discord import Message
 from discord.ext import commands
 
 from bot.utils.settings import settings
@@ -14,6 +16,12 @@ BOT_LOAD_EXTENSIONS: list[str] = [
 
 
 class Bot(commands.Bot):
+    def __init__(self, *args, **kwargs):
+        def no_prefix(_: commands.Bot, __: Message) -> Sequence[str]:
+            return ()
+        kwargs.setdefault("command_prefix", no_prefix)
+        super().__init__(*args, **kwargs)
+
     async def setup_hook(self) -> None:
         logger.debug('Running setup hook...')
         logger.log_settings(settings)

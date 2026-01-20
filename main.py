@@ -8,7 +8,6 @@ intents = discord.Intents.default()
 intents.members = True
 
 bot = Bot(
-    command_prefix="i!",
     intents=intents,
     help_command=None,
 )
