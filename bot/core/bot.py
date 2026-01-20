@@ -17,9 +17,7 @@ BOT_LOAD_EXTENSIONS: list[str] = [
 
 class Bot(commands.Bot):
     def __init__(self, *args, **kwargs):
-        def no_prefix(_: commands.Bot, __: Message) -> Sequence[str]:
-            return ()
-        kwargs.setdefault("command_prefix", no_prefix)
+        kwargs.setdefault("command_prefix", "__disabled__")
         super().__init__(*args, **kwargs)
 
     async def setup_hook(self) -> None:

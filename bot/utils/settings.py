@@ -15,6 +15,8 @@ class SettingsManager(BaseSettings):
     debug_mode: bool = Field(default=False)
     bot_time_zone: ZoneInfo = Field(default=ZoneInfo("UTC"))
     enabled_roles: list[RoleIdentifier] = Field(default_factory=list)
+    private_message_title: str = Field(default="Private Message from {sender_guild_name}")
+    private_message_footer: str = Field(default="Sent by {sender_username} in {sender_guild_name}")
 
     model_config = SettingsConfigDict(
         env_file=ENV_FILE_PATH,

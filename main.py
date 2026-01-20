@@ -15,6 +15,7 @@ bot = Bot(
 
 def main() -> None:
     try:
+        logger.info('Bot is starting up...')
         bot.run(settings.discord_token)
     except KeyboardInterrupt:
         logger.info('Bot is shutting down...')

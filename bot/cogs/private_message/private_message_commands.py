@@ -38,28 +38,37 @@ class PrivateMessageCommands(commands.Cog):
 
         await interaction.response.defer(ephemeral=True)
 
-        now = datetime.now(tz=ZoneInfo("UTC"))
-
         record = PrivateMessageRecord(
             id=0,
             from_user_id=interaction.user.id,
             to_user_id=user.id,
             message=message,
-            created_at=now,
+            created_at=datetime.now(tz=ZoneInfo("UTC")),
         )
 
+        guild = interaction.guild.name if interaction.guild else "Server"
         embed = discord.Embed(
+            title=settings.private_message_title.format(sender_guild_name=guild) if (
+                settings.private_message_title
+             ) else "Private Message",
             description=record.message,
             color=discord.Color.blurple(),
             timestamp=record.created_at,
         )
         embed.set_footer(
-            text=f"Sent by {interaction.user}",
+            text=settings.private_message_footer.format(
+                sender_username=interaction.user.name,
+                sender_guild_name=guild,
+            ),
             icon_url=interaction.user.display_avatar.url,
         )
 
+        if interaction.guild and interaction.guild.icon:
+            embed.set_thumbnail(url=interaction.guild.icon.url)
+
         try:
             await user.send(embed=embed)
+            logger.info(f'Sent DM to user {user.id} from {interaction.user.id}: "{self._flatten_newlines_and_strip(record.message)}"')
         except discord.Forbidden:
             await interaction.followup.send(
                 "I can't send a DM to that user (DMs disabled or blocked).",
@@ -75,7 +84,6 @@ class PrivateMessageCommands(commands.Cog):
             return
 
         await private_message_repo.add(record)
-
         await interaction.followup.send(
             f"DM successfully sent to **{user}**.",
             ephemeral=True,
@@ -147,7 +155,7 @@ class PrivateMessageCommands(commands.Cog):
         lines: list[str] = []
         for r in records:
             ts = int(r.created_at.timestamp())
-            msg = r.message.replace("\n", " ").strip()
+            msg = self._flatten_newlines_and_strip(r.message)
             if len(msg) > 120:
                 msg = msg[:117] + "..."
 
@@ -163,11 +171,17 @@ class PrivateMessageCommands(commands.Cog):
 
         await interaction.followup.send(embed=embed, ephemeral=True)
 
+    def _flatten_newlines_and_strip(self, text: str) -> str:
+        return " ".join(line.strip() for line in text.splitlines() if line.strip())
+
     async def _has_role_permission(
         self,
         interaction: discord.Interaction,
     ) -> bool:
         if not settings.enabled_roles:
+            logger.warning(
+                "No roles are configured to use private message commands."
+            )
             await interaction.response.send_message(
                 "No roles are configured to use this command.",
                 ephemeral=True,
@@ -175,6 +189,9 @@ class PrivateMessageCommands(commands.Cog):
             return False
 
         if interaction.guild is None:
+            logger.debug(
+                "Private message command used outside of a guild."
+            )
             await interaction.response.send_message(
                 "This command can only be used in a server.",
                 ephemeral=True,
@@ -183,6 +200,9 @@ class PrivateMessageCommands(commands.Cog):
 
         member = interaction.guild.get_member(interaction.user.id)
         if member is None:
+            logger.warning(
+                f"Unable to resolve server member for user {interaction.user.id}."
+            )
             await interaction.response.send_message(
                 "Unable to resolve your server roles.",
                 ephemeral=True,
@@ -192,6 +212,10 @@ class PrivateMessageCommands(commands.Cog):
         if not any(
             role.id in settings.enabled_roles for role in member.roles
         ):
+            logger.warning(
+                f"User {interaction.user.id} lacks required roles "
+                "to use private message commands."
+            )
             await interaction.response.send_message(
                 "You do not have permission to use this command.",
                 ephemeral=True,
