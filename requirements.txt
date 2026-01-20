@@ -1,0 +1,15 @@
+# db
+aiosqlite
+
+# discord
+discord.py>=2.6.0
+
+# code management
+pre-commit
+pydantic-settings
+
+# Date and Time Handling
+python-dateutil
+
+# Settings Handling
+python-dotenv
