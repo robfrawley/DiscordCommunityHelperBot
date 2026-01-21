@@ -5,6 +5,7 @@ from bot.utils.settings import settings
 from bot.utils.logger import logger
 
 intents = discord.Intents.default()
+intents.dm_messages = True
 intents.members = True
 
 bot = Bot(
