@@ -1,4 +1,5 @@
 from datetime import datetime
+from typing import Any
 
 from bot.db.database import Database, database
 from bot.models.configuration_record import ConfigurationRecord
@@ -90,6 +91,11 @@ class ConfigurationRepo:
             )
             for row in rows
         ]
+
+    async def get_all_as_dict(self) -> dict[str, Any]:
+        records: list[ConfigurationRecord] = await self.list()
+
+        return {r.key: r.value for r in records}
 
 
 configuration_repo = ConfigurationRepo(database=database)

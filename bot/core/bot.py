@@ -22,12 +22,17 @@ class Bot(commands.Bot):
 
     async def setup_hook(self) -> None:
         logger.debug('Running setup hook...')
-        logger.log_settings(settings)
 
         logger.info('Setting up database...')
         await database.connect()
         await configuration_repo.init_schema()
         await private_message_repo.init_schema()
+
+        logger.info('Applying configuration overrides...')
+        settings.apply_overrides(
+            await configuration_repo.get_all_as_dict()
+        )
+        logger.log_settings(settings)
 
         logger.info('Loading extensions...')
         for ext in BOT_LOAD_EXTENSIONS:

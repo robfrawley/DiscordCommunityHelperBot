@@ -1,8 +1,9 @@
 import json
+from typing import Any
 from zoneinfo import ZoneInfo
 from pathlib import Path
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from bot import ENV_FILE_PATH
@@ -17,6 +18,8 @@ class SettingsManager(BaseSettings):
     enabled_roles: list[RoleIdentifier] = Field(default_factory=list)
     private_message_title: str = Field(default="Private Message from {sender_guild_name}")
     private_message_footer: str = Field(default="Sent by {sender_username} in {sender_guild_name}")
+    log_channel_id: int | None = Field(default=None)
+    allow_responses: bool = Field(default=False)
 
     model_config = SettingsConfigDict(
         env_file=ENV_FILE_PATH,
@@ -41,15 +44,12 @@ class SettingsManager(BaseSettings):
     @field_validator("enabled_roles", mode="before")
     @classmethod
     def parse_enabled_roles_json(cls, v):
-        # Allow unset / empty values.
         if v is None or v == "":
             return []
 
-        # The env value comes in as a JSON string most of the time.
         if isinstance(v, str):
             v = json.loads(v)
 
-        # Be forgiving in case a single role id / RoleIdentifier is provided.
         if isinstance(v, RoleIdentifier):
             return [v]
         if isinstance(v, int):
@@ -66,6 +66,17 @@ class SettingsManager(BaseSettings):
                 out.append(RoleIdentifier(id=item))
             elif isinstance(item, str) and item.isdigit():
                 out.append(RoleIdentifier(id=int(item)))
+            elif isinstance(item, dict) and "id" in item:
+                raw_id = item["id"]
+                if isinstance(raw_id, int):
+                    out.append(RoleIdentifier(id=raw_id))
+                elif isinstance(raw_id, str) and raw_id.isdigit():
+                    out.append(RoleIdentifier(id=int(raw_id)))
+                else:
+                    raise TypeError(
+                        "enabled_roles dict items must have an int (or digit-string) 'id'; "
+                        f"got id={raw_id!r} ({type(raw_id).__name__})"
+                    )
             else:
                 raise TypeError(
                     "enabled_roles items must be ints (or digit-strings) representing role IDs; "
@@ -74,5 +85,14 @@ class SettingsManager(BaseSettings):
 
         return out
 
+    def apply_overrides(self, overrides: dict[str, Any]) -> None:
+        if not overrides:
+            return
+
+        merged = {**self.model_dump(), **overrides}
+        validated = self.__class__.model_validate(merged)
+
+        for name in type(validated).model_fields.keys():
+            setattr(self, name, getattr(validated, name))
 
 settings = SettingsManager() # type: ignore
