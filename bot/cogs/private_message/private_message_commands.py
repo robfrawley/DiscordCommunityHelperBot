@@ -9,8 +9,10 @@ from discord.ext import commands
 
 from bot.db.repos.private_message_repo import private_message_repo
 from bot.models.private_message_record import PrivateMessageRecord
+from bot.utils.helpers import flatten_newlines_and_strip_str
 from bot.utils.logger import logger
 from bot.utils.settings import settings
+from bot.views.private_message_list_paginator import PrivateMessageListPaginator
 
 
 class PrivateMessageCommands(commands.Cog):
@@ -66,7 +68,7 @@ class PrivateMessageCommands(commands.Cog):
 
         try:
             await user.send(embed=embed)
-            logger.info(f'Sent DM to user {user.id} from {interaction.user.id}: "{self._flatten_newlines_and_strip(record.message)}"')
+            logger.info(f'Sent DM to user {user.id} from {interaction.user.id}: "{flatten_newlines_and_strip_str(record.message)}"')
         except discord.Forbidden:
             await interaction.followup.send(
                 "I can't send a DM to that user (DMs disabled or blocked).",
@@ -102,7 +104,7 @@ class PrivateMessageCommands(commands.Cog):
         interaction: discord.Interaction,
         to_user: discord.User | None = None,
         from_user: discord.User | None = None,
-        limit: int = 10,
+        limit: int = 4,
         offset: int = 0,
     ) -> None:
         if not await self._has_role_permission(interaction):
@@ -120,57 +122,37 @@ class PrivateMessageCommands(commands.Cog):
             offset=offset,
         )
 
-        if not records:
-            await interaction.followup.send(
-                "No matching messages found.",
-                ephemeral=True,
-            )
-            return
+        to_user_id = to_user.id if to_user else None
+        from_user_id = from_user.id if from_user else None
 
-        if to_user and from_user:
-            title = (
-                f"Logged DMs sent by {from_user} to {to_user} "
-                f"(latest first)"
-            )
-        elif to_user:
-            title = (
-                f"Logged DMs received by {to_user} "
-                f"(latest first)"
-            )
-        elif from_user:
-            title = (
-                f"Logged DMs sent by {from_user} "
-                f"(latest first)"
-            )
-        else:
-            title = "Latest logged DMs"
+        to_user_label = (to_user.display_name if to_user else None)
+        from_user_label = (from_user.display_name if from_user else None)
 
-        embed = discord.Embed(
-            title=title,
-            color=discord.Color.blurple(),
+        embed = self._build_dm_list_embed(
+            records=records,
+            to_user_id=to_user_id,
+            from_user_id=from_user_id,
+            to_user_label=to_user_label,
+            from_user_label=from_user_label,
+            limit=limit,
+            offset=offset,
         )
 
-        lines: list[str] = []
-        for r in records:
-            ts = int(r.created_at.timestamp())
-            msg = self._flatten_newlines_and_strip(r.message)
-            if len(msg) > 120:
-                msg = msg[:117] + "..."
-
-            lines.append(
-                f"• <t:{ts}:f> "
-                f"**<@{r.from_user_id}> → <@{r.to_user_id}>**: {msg}"
-            )
-
-        embed.description = "\n".join(lines)
-        embed.set_footer(
-            text=f"Showing {len(records)} message(s) • offset={offset} • limit={limit}"
+        view = PrivateMessageListPaginator(
+            cog=self,
+            user_id=interaction.user.id,
+            to_user_id=to_user_id,
+            from_user_id=from_user_id,
+            to_user_label=to_user_label,
+            from_user_label=from_user_label,
+            limit=limit,
+            offset=offset,
         )
 
-        await interaction.followup.send(embed=embed, ephemeral=True)
+        view.prev_button.disabled = (offset <= 0)
+        view.next_button.disabled = (len(records) < limit)
 
-    def _flatten_newlines_and_strip(self, text: str) -> str:
-        return " ".join(line.strip() for line in text.splitlines() if line.strip())
+        await interaction.followup.send(embed=embed, view=view, ephemeral=True)
 
     async def _has_role_permission(
         self,
@@ -221,3 +203,56 @@ class PrivateMessageCommands(commands.Cog):
             return False
 
         return True
+
+    def _build_dm_list_embed(
+        self,
+        *,
+        records: list[PrivateMessageRecord],
+        to_user_id: int | None,
+        from_user_id: int | None,
+        to_user_label: str | None,
+        from_user_label: str | None,
+        limit: int,
+        offset: int,
+    ) -> discord.Embed:
+        if to_user_id and not to_user_label:
+            to_user_label = f"User {to_user_id}"
+        if from_user_id and not from_user_label:
+            from_user_label = f"User {from_user_id}"
+
+        if to_user_id and from_user_id:
+            title = f"Logged DMs: {from_user_label} → {to_user_label}"
+        elif to_user_id:
+            title = f"Logged DMs received by {to_user_label}"
+        elif from_user_id:
+            title = f"Logged DMs sent by {from_user_label}"
+        else:
+            title = "Latest logged DMs"
+
+        embed = discord.Embed(title=f"{title} (latest first)", color=discord.Color.blurple())
+
+        header_bits: list[str] = []
+        if from_user_id:
+            header_bits.append(f"From: <@{from_user_id}>")
+        if to_user_id:
+            header_bits.append(f"To: <@{to_user_id}>")
+
+        header = "**" + "\n".join(header_bits) + "**\n\n" if header_bits else ""
+
+        if not records:
+            embed.description = "No matching messages found."
+            embed.set_footer(text=f"offset={offset} • limit={limit}")
+            return embed
+
+        lines: list[str] = []
+        for r in records:
+            ts = int(r.created_at.timestamp())
+            msg = flatten_newlines_and_strip_str(r.message)
+            #if len(msg) > 120:
+            #    msg = msg[:117] + "..."
+            lines.append(f"• <t:{ts}:f> **<@{r.from_user_id}> → <@{r.to_user_id}>**:\n  ```\n{msg}\n```")
+
+        embed.description = header + "\n".join(lines)
+        embed.set_footer(text=f"Showing {len(records)} message(s) • offset={offset} • limit={limit}")
+
+        return embed
