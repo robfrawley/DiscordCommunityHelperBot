@@ -24,6 +24,7 @@ class SettingsManager(BaseSettings):
     reaction_abuser_reacted_time_window_seconds: float = Field(default=2.5)
     reaction_abuser_warning_time_window_seconds: float = Field(default=3600.0)
     reaction_abuser_warning_max_allowed_removal: int = Field(default=3)
+    reaction_abuser_warning_ping_role_id: int | None = Field(default=None)
 
     model_config = SettingsConfigDict(
         env_file=ENV_FILE_PATH,
@@ -31,6 +32,20 @@ class SettingsManager(BaseSettings):
         extra="ignore",
         populate_by_name=True,
     )
+
+    @field_validator(
+        "private_message_log_channel_id",
+        "reaction_abuser_warning_ping_role_id",
+        "reaction_abuser_log_channel_id",
+        mode="before",
+    )
+    @classmethod
+    def empty_str_to_none(cls, v):
+        if v is None:
+            return None
+        if isinstance(v, str) and v.strip() == "":
+            return None
+        return v
 
     @field_validator("sqlite_db_path", mode="before")
     @classmethod

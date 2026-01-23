@@ -125,7 +125,10 @@ class ReactionAbuserListener(commands.Cog):
                 timestamp=datetime.now(settings.bot_time_zone),
             )
 
-            await log_channel.send(embed=embed)
+            await log_channel.send(
+                content=(f"<@&{settings.reaction_abuser_warning_ping_role_id}>" if settings.reaction_abuser_warning_ping_role_id else None),
+                embed=embed
+            )
 
             deleted: int = await emoji_abuser_repo.delete_user_records(user_id=p[0])
 
