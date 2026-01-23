@@ -6,12 +6,14 @@ from bot.utils.settings import settings
 from bot.utils.logger import logger
 from bot.db.database import database
 from bot.db.repos.private_message_repo import private_message_repo
-from bot.db.repos.configuration_repo import configuration_repo
+from bot.db.repos.emoji_payload_repo import emoji_payload_repo
+from bot.db.repos.emoji_abuser_repo import emoji_abuser_repo
 
 
 # List of bot extensions to load
 BOT_LOAD_EXTENSIONS: list[str] = [
     "bot.cogs.private_message",
+    "bot.cogs.reaction_abuser",
 ]
 
 
@@ -23,16 +25,13 @@ class Bot(commands.Bot):
     async def setup_hook(self) -> None:
         logger.debug('Running setup hook...')
 
+        logger.log_settings(settings)
+
         logger.info('Setting up database...')
         await database.connect()
-        await configuration_repo.init_schema()
+        await emoji_payload_repo.init_schema()
+        await emoji_abuser_repo.init_schema()
         await private_message_repo.init_schema()
-
-        logger.info('Applying configuration overrides...')
-        settings.apply_overrides(
-            await configuration_repo.get_all_as_dict()
-        )
-        logger.log_settings(settings)
 
         logger.info('Loading extensions...')
         for ext in BOT_LOAD_EXTENSIONS:

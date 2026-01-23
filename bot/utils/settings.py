@@ -15,11 +15,15 @@ class SettingsManager(BaseSettings):
     sqlite_db_path: str = Field()
     debug_mode: bool = Field(default=False)
     bot_time_zone: ZoneInfo = Field(default=ZoneInfo("UTC"))
-    enabled_roles: list[RoleIdentifier] = Field(default_factory=list)
+    command_enabled_roles: list[RoleIdentifier] = Field(default_factory=list)
     private_message_title: str = Field(default="Private Message from {sender_guild_name}")
     private_message_footer: str = Field(default="Sent by {sender_username} in {sender_guild_name}")
-    log_channel_id: int | None = Field(default=None)
+    private_message_log_channel_id: int | None = Field(default=None)
     allow_responses: bool = Field(default=False)
+    reaction_abuser_log_channel_id: int | None = Field(default=None)
+    reaction_abuser_reacted_time_window_seconds: float = Field(default=2.5)
+    reaction_abuser_warning_time_window_seconds: float = Field(default=3600.0)
+    reaction_abuser_warning_max_allowed_removal: int = Field(default=3)
 
     model_config = SettingsConfigDict(
         env_file=ENV_FILE_PATH,
@@ -41,9 +45,9 @@ class SettingsManager(BaseSettings):
     def normalize_bot_time_zone(cls, v):
         return ZoneInfo(v) if isinstance(v, str) else v
 
-    @field_validator("enabled_roles", mode="before")
+    @field_validator("command_enabled_roles", mode="before")
     @classmethod
-    def parse_enabled_roles_json(cls, v):
+    def parse_command_enabled_roles_json(cls, v):
         if v is None or v == "":
             return []
 
@@ -56,7 +60,7 @@ class SettingsManager(BaseSettings):
             return [RoleIdentifier(id=v)]
 
         if not isinstance(v, (list, tuple, set)):
-            raise TypeError(f"enabled_roles must be a JSON array (or list) of ints, got {type(v).__name__}")
+            raise TypeError(f"command_enabled_roles must be a JSON array (or list) of ints, got {type(v).__name__}")
 
         out: list[RoleIdentifier] = []
         for item in v:
@@ -74,25 +78,16 @@ class SettingsManager(BaseSettings):
                     out.append(RoleIdentifier(id=int(raw_id)))
                 else:
                     raise TypeError(
-                        "enabled_roles dict items must have an int (or digit-string) 'id'; "
+                        "command_enabled_roles dict items must have an int (or digit-string) 'id'; "
                         f"got id={raw_id!r} ({type(raw_id).__name__})"
                     )
             else:
                 raise TypeError(
-                    "enabled_roles items must be ints (or digit-strings) representing role IDs; "
+                    "command_enabled_roles items must be ints (or digit-strings) representing role IDs; "
                     f"got {item!r} ({type(item).__name__})"
                 )
 
         return out
 
-    def apply_overrides(self, overrides: dict[str, Any]) -> None:
-        if not overrides:
-            return
-
-        merged = {**self.model_dump(), **overrides}
-        validated = self.__class__.model_validate(merged)
-
-        for name in type(validated).model_fields.keys():
-            setattr(self, name, getattr(validated, name))
 
 settings = SettingsManager() # type: ignore

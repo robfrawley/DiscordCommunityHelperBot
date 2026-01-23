@@ -63,10 +63,10 @@ async def log_dm_embed(
     logger: ConsoleLogger,
     settings: SettingsManager,
 ) -> None:
-    if settings.log_channel_id:
+    if settings.private_message_log_channel_id:
         log_channel = await get_channel(
             bot,
-            channel_id=settings.log_channel_id,
+            channel_id=settings.private_message_log_channel_id,
         )
         if isinstance(log_channel, discord.TextChannel):
             await log_channel.send(
@@ -75,5 +75,5 @@ async def log_dm_embed(
             )
         else:
             logger.warning(
-                f"Log channel ID {settings.log_channel_id} is not a text channel."
+                f"Log channel ID {settings.private_message_log_channel_id} is not a text channel."
             )

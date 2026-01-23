@@ -9,8 +9,6 @@ from discord.ext import commands
 
 from bot.db.repos.private_message_repo import private_message_repo
 from bot.models.private_message_record import PrivateMessageRecord
-from bot.db.repos.configuration_repo import configuration_repo
-from bot.models.configuration_record import ConfigurationRecord
 from bot.views.private_message_list_paginator import PrivateMessageListPaginator
 from bot.utils.helpers import build_dm_embed, flatten_newlines_and_strip_str, get_channel, log_dm_embed
 from bot.utils.logger import logger
@@ -157,7 +155,7 @@ class PrivateMessageCommands(commands.Cog):
         self,
         interaction: discord.Interaction,
     ) -> bool:
-        if not settings.enabled_roles:
+        if not settings.command_enabled_roles:
             logger.warning(
                 "No roles are configured to use private message commands."
             )
@@ -189,7 +187,7 @@ class PrivateMessageCommands(commands.Cog):
             return False
 
         if not any(
-            role.id in settings.enabled_roles for role in member.roles
+            role.id in settings.command_enabled_roles for role in member.roles
         ):
             logger.warning(
                 f"User {interaction.user.id} lacks required roles "
@@ -255,120 +253,3 @@ class PrivateMessageCommands(commands.Cog):
         embed.set_footer(text=f"Showing {len(records)} message(s) • offset={offset} • limit={limit}")
 
         return embed
-
-    @app_commands.command(
-        name="dm_config",
-        description="Set or view SettingsManager values stored in the configuration table.",
-    )
-    @app_commands.describe(
-        key="SettingsManager field name (ex: enabled_roles, debug_mode)",
-        value=(
-            "Value to set (stored as text). Use JSON for lists/objects. "
-            "Omit to view current value."
-        ),
-        delete="Delete the override from the database (reverts to env/default)",
-    )
-    async def dm_config(
-        self,
-        interaction: discord.Interaction,
-        key: str,
-        value: str | None = None,
-        delete: bool = False,
-    ) -> None:
-        if not await self._has_role_permission(interaction):
-            return
-
-        await interaction.response.defer(ephemeral=True)
-
-        allowed_keys = set(SettingsManager.model_fields.keys())
-
-        if key not in allowed_keys:
-            await interaction.followup.send(
-                "Unknown settings key. Valid keys:\n" + "\n".join(sorted(allowed_keys)),
-                ephemeral=True,
-            )
-            return
-
-        # View current value (and whether an override exists)
-        if value is None and not delete:
-            current_value = getattr(settings, key)
-            override = await configuration_repo.get(key)
-
-            embed = discord.Embed(
-                title=f"Config: {key}",
-                color=discord.Color.blurple(),
-            )
-            embed.add_field(name="Current (effective)", value=f"```\n{current_value!r}\n```", inline=False)
-            if override:
-                embed.add_field(name="DB override", value=f"```\n{override.value}\n```", inline=False)
-                embed.set_footer(text=f"Updated: {override.updated_at.isoformat()}")
-            else:
-                embed.add_field(name="DB override", value="*(none; using env/default)*", inline=False)
-
-            await interaction.followup.send(embed=embed, ephemeral=True)
-            return
-
-        now = datetime.now(tz=settings.bot_time_zone)
-
-        if delete:
-            await configuration_repo.delete(key)
-            await self._reload_settings_from_env_and_db()
-            await interaction.followup.send(
-                f"Deleted configuration override for `{key}` (reverted to env/default).",
-                ephemeral=True,
-            )
-            return
-
-        assert value is not None
-
-        # Validate the change by re-validating the full settings model
-        try: # reload env/defaults
-            overrides = await configuration_repo.get_all_as_dict()
-            overrides[key] = value
-
-            base_env = SettingsManager() # type: ignore
-            validated = SettingsManager.model_validate({**base_env.model_dump(), **overrides})
-        except Exception as exc:
-            await interaction.followup.send(
-                f"Invalid value for `{key}`: `{exc}`",
-                ephemeral=True,
-            )
-            return
-
-        await configuration_repo.set(
-            ConfigurationRecord(
-                key=key,
-                value=value,
-                updated_at=now,
-            )
-        )
-
-        # Apply the validated settings to the singleton instance so other imports see the update.
-        for name in SettingsManager.model_fields.keys():
-            setattr(settings, name, getattr(validated, name))
-
-        await interaction.followup.send(
-            f"Set `{key}` to `{value}`.",
-            ephemeral=True,
-        )
-
-    @dm_config.autocomplete("key")
-    async def dm_config_key_autocomplete(
-        self,
-        interaction: discord.Interaction,
-        current: str,
-    ) -> list[app_commands.Choice[str]]:
-        keys = sorted(SettingsManager.model_fields.keys())
-        if current:
-            cur = current.lower()
-            keys = [k for k in keys if cur in k.lower()]
-        return [app_commands.Choice(name=k, value=k) for k in keys[:25]]
-
-    async def _reload_settings_from_env_and_db(self) -> None:
-        """Reload env/default settings, apply DB overrides, and update the singleton in-place."""
-        base_env = SettingsManager() # type: ignore
-        overrides = await configuration_repo.get_all_as_dict()
-        validated = SettingsManager.model_validate({**base_env.model_dump(), **overrides})
-
-        for name in SettingsManager.model_fields.keys():
-            setattr(settings, name, getattr(validated, name))

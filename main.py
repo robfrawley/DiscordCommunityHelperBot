@@ -7,6 +7,7 @@ from bot.utils.logger import logger
 intents = discord.Intents.default()
 intents.dm_messages = True
 intents.members = True
+intents.guild_reactions = True
 
 bot = Bot(
     intents=intents,
