@@ -61,6 +61,18 @@ class ReactionAbuserListener(commands.Cog):
         else:
             logger.debug("Reaction removal outside of abuser time window; no action taken.")
 
+    @tasks.loop(minutes=60)
+    async def every_sixty_minutes_task(self):
+        logger.debug("Running reaction abuser cleanup task (every 60 minutes)...")
+        pruned_count = await emoji_abuser_repo.prune(
+            older_than_seconds=int(settings.reaction_abuser_warning_time_window_seconds * 2)
+        )
+        logger.info(f"Pruned {pruned_count} old reaction abuser records older than {int(settings.reaction_abuser_warning_time_window_seconds * 2 // 3600)} hours.")
+
+    @every_sixty_minutes_task.before_loop
+    async def before_every_sixty_minutes_task(self):
+        await self.bot.wait_until_ready()
+
     @tasks.loop(minutes=1)
     async def every_minute_task(self):
         logger.debug("Running reaction abuser detection task (every minute)...")
@@ -137,6 +149,10 @@ class ReactionAbuserListener(commands.Cog):
                 "after logging the warning."
             )
 
+    @every_minute_task.before_loop
+    async def before_every_minute_task(self):
+        await self.bot.wait_until_ready()
+
     def _emoji_cdn_url(self, emoji_id: str, *, animated: bool) -> str:
         ext = "gif" if animated else "png"
         return f"https://cdn.discordapp.com/emojis/{emoji_id}.{ext}?v=1"
@@ -168,22 +184,6 @@ class ReactionAbuserListener(commands.Cog):
         # Can't render as emoji -> provide a clickable image link
         url = self._emoji_cdn_url(emoji_id, animated=False)
         return f"[`:{emoji_name}:`]({url})"
-
-    @every_minute_task.before_loop
-    async def before_every_minute_task(self):
-        await self.bot.wait_until_ready()
-
-    @tasks.loop(minutes=60)
-    async def every_sixty_minutes_task(self):
-        logger.debug("Running reaction abuser cleanup task (every 60 minutes)...")
-        pruned_count = await emoji_abuser_repo.prune(
-            older_than_seconds=int(settings.reaction_abuser_warning_time_window_seconds * 2)
-        )
-        logger.info(f"Pruned {pruned_count} old reaction abuser records older than {int(settings.reaction_abuser_warning_time_window_seconds * 2 // 3600)} hours.")
-
-    @every_sixty_minutes_task.before_loop
-    async def before_every_sixty_minutes_task(self):
-        await self.bot.wait_until_ready()
 
     def _extract_payload_info(self, payload: discord.RawReactionActionEvent) -> EmojiPayload:
         parts: list[str | int | None] = [
