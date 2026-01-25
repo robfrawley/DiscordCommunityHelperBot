@@ -75,7 +75,7 @@ class EmojiAbuserRepo:
         self,
         *,
         within_seconds: int,
-        max_count: int,
+        count_minimums: int,
     ) -> list[EmojiPayload]:
         cutoff_ts: int = int(
             (datetime.now(settings.bot_time_zone) - timedelta(seconds=int(within_seconds))).timestamp()
@@ -89,7 +89,7 @@ class EmojiAbuserRepo:
             GROUP BY user_id
             HAVING COUNT(*) > ?;
             """.strip(),
-            (cutoff_ts, int(max_count)),
+            (cutoff_ts, int(count_minimums)),
         )
 
         offenders_rows = await cursor1.fetchall()

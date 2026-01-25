@@ -1,5 +1,3 @@
-from collections.abc import Sequence
-from discord import Message
 from discord.ext import commands
 
 from bot.utils.settings import settings

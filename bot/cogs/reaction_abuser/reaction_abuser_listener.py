@@ -11,11 +11,14 @@ from bot.utils.settings import settings
 from bot.models.emoji_payload import EmojiPayload
 from bot.db.repos.emoji_payload_repo import emoji_payload_repo
 from bot.db.repos.emoji_abuser_repo import emoji_abuser_repo
-
+from bot.utils.helpers import (
+    extract_reaction_payload_info,
+    get_log_channel,
+    get_emoji_as_readable_utf8_str,
+    encode_emoji_as_renderable,
+)
 
 class ReactionAbuserListener(commands.Cog):
-    _EMOJI_CUSTOMS_RE = re.compile(r"^([A-Za-z0-9_]+)-(\d+)$")
-
     def __init__(self, bot: Bot) -> None:
         self.bot = bot
         self.every_minute_task.start()
@@ -30,7 +33,7 @@ class ReactionAbuserListener(commands.Cog):
         if not self._is_actionable_reaction(payload):
             return
 
-        emoji_add_payload: EmojiPayload = self._extract_payload_info(payload)
+        emoji_add_payload: EmojiPayload = extract_reaction_payload_info(payload)
         logger.debug(f"Reaction added: {emoji_add_payload}")
         await emoji_payload_repo.add(emoji_add_payload)
 
@@ -39,7 +42,7 @@ class ReactionAbuserListener(commands.Cog):
         if not self._is_actionable_reaction(payload):
             return
 
-        emoji_del_payload: EmojiPayload = self._extract_payload_info(payload)
+        emoji_del_payload: EmojiPayload = extract_reaction_payload_info(payload)
         logger.debug(f"Reaction removed: {emoji_del_payload}")
         emoji_add_payload: EmojiPayload | None = await emoji_payload_repo.get_and_delete(emoji_del_payload)
 
@@ -79,7 +82,7 @@ class ReactionAbuserListener(commands.Cog):
 
         abusers: list[EmojiPayload] = await emoji_abuser_repo.get_abusers_within(
             within_seconds=int(settings.reaction_abuser_warning_time_window_seconds),
-            max_count=settings.reaction_abuser_warning_max_allowed_removal,
+            count_minimums=settings.reaction_abuser_warning_max_allowed_removal,
         )
 
         logger.debug(f"Found {len(abusers)} reaction abuser records in the time window: {abusers}")
@@ -102,7 +105,7 @@ class ReactionAbuserListener(commands.Cog):
             f"in the last {settings.reaction_abuser_warning_time_window_seconds} seconds."
         )
 
-        log_channel: discord.TextChannel | None = self._get_log_channel()
+        log_channel: discord.TextChannel | None = get_log_channel(self.bot)
         if log_channel is None:
             return
 
@@ -122,7 +125,7 @@ class ReactionAbuserListener(commands.Cog):
             matched_payloads: list[EmojiPayload] = [mp for mp in match_abusers if mp.user_id == p[0]]
             matched_messages = matched_messages = "\n".join(
                 f"• [`{mp.message_id}`](https://discord.com/channels/{mp.guild_id}/{mp.channel_id}/{mp.message_id}) -> "
-                f"{self._encode_emoji_as_renderable(mp)}"
+                f"{encode_emoji_as_renderable(self.bot, mp)}"
                 for mp in matched_payloads
             )
 
@@ -152,74 +155,6 @@ class ReactionAbuserListener(commands.Cog):
     @every_minute_task.before_loop
     async def before_every_minute_task(self):
         await self.bot.wait_until_ready()
-
-    def _emoji_cdn_url(self, emoji_id: str, *, animated: bool) -> str:
-        ext = "gif" if animated else "png"
-        return f"https://cdn.discordapp.com/emojis/{emoji_id}.{ext}?v=1"
-
-    def _encode_emoji_as_renderable(self, payload: EmojiPayload) -> str:
-        if not payload.emoji:
-            return ""
-
-        # Unicode escape text like "\\u2764\\ufe0f" or "\\U0001f525"
-        if payload.emoji.startswith("\\"):
-            try:
-                return payload.emoji.encode("ascii").decode("unicode_escape")
-            except Exception as e:
-                logger.warning(f"Failed to decode unicode emoji '{payload.emoji}': {e}")
-                return ""
-
-        m = self._EMOJI_CUSTOMS_RE.fullmatch(payload.emoji)
-        if not m:
-            return payload.emoji  # if you ever store real unicode directly
-
-        emoji_name, emoji_id = m.group(1), m.group(2)
-
-        guild = self.bot.get_guild(payload.guild_id)
-        emoji_obj = guild and discord.utils.get(guild.emojis, id=int(emoji_id))
-
-        if emoji_obj:
-            return f"<{'a' if emoji_obj.animated else ''}:{emoji_name}:{emoji_id}>"
-
-        # Can't render as emoji -> provide a clickable image link
-        url = self._emoji_cdn_url(emoji_id, animated=False)
-        return f"[`:{emoji_name}:`]({url})"
-
-    def _extract_payload_info(self, payload: discord.RawReactionActionEvent) -> EmojiPayload:
-        parts: list[str | int | None] = [
-            self._get_emoji_as_readable_utf8_str(payload),
-            payload.emoji.id,
-        ]
-
-        return EmojiPayload(
-            message_id=payload.message_id,
-            channel_id=payload.channel_id,
-            user_id=payload.user_id,
-            guild_id=payload.guild_id if payload.guild_id is not None else 0,
-            emoji="-".join(str(x) for x in parts if x is not None),
-            timestamp=datetime.now(settings.bot_time_zone),
-        )
-
-    def _get_log_channel(self) -> discord.TextChannel | None:
-        if settings.reaction_abuser_log_channel_id is None:
-            logger.warning("Reaction abuser log channel ID is not configured.")
-            return None
-
-        channel = self.bot.get_channel(settings.reaction_abuser_log_channel_id)
-        if channel is None or not isinstance(channel, discord.TextChannel):
-            logger.warning(
-                f"Unable to resolve reaction abuser log channel with ID "
-                f"{settings.reaction_abuser_log_channel_id}."
-            )
-            return None
-
-        return channel
-
-    def _get_emoji_as_readable_utf8_str(self, payload: discord.RawReactionActionEvent) -> str | None:
-        if payload.emoji.name:
-            return payload.emoji.name.encode("unicode_escape").decode("ascii")
-
-        return None
 
     def _is_actionable_reaction(self, payload: discord.RawReactionActionEvent) -> bool:
         if payload.user_id == (self.bot.user.id if self.bot.user else None):

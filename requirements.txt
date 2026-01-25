@@ -3,6 +3,7 @@ aiosqlite
 
 # discord
 discord.py>=2.6.0
+httpx
 
 # code management
 pre-commit

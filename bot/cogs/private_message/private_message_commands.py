@@ -10,7 +10,7 @@ from discord.ext import commands
 from bot.db.repos.private_message_repo import private_message_repo
 from bot.models.private_message_record import PrivateMessageRecord
 from bot.views.private_message_list_paginator import PrivateMessageListPaginator
-from bot.utils.helpers import build_dm_embed, flatten_newlines_and_strip_str, get_channel, log_dm_embed
+from bot.utils.helpers import build_dm_embed, flatten_newlines_and_strip_str, get_channel, log_dm_embed, check_command_role_permission
 from bot.utils.logger import logger
 from bot.utils.settings import settings, SettingsManager
 
@@ -33,7 +33,7 @@ class PrivateMessageCommands(commands.Cog):
         user: discord.User,
         message: str,
     ) -> None:
-        if not await self._has_role_permission(interaction):
+        if not await check_command_role_permission(interaction, settings.command_enabled_roles):
             return
 
         await interaction.response.defer(ephemeral=True)
@@ -104,7 +104,7 @@ class PrivateMessageCommands(commands.Cog):
         limit: int = 4,
         offset: int = 0,
     ) -> None:
-        if not await self._has_role_permission(interaction):
+        if not await check_command_role_permission(interaction, settings.command_enabled_roles):
             return
 
         await interaction.response.defer(ephemeral=True)
@@ -150,56 +150,6 @@ class PrivateMessageCommands(commands.Cog):
         view.next_button.disabled = (len(records) < limit)
 
         await interaction.followup.send(embed=embed, view=view, ephemeral=True)
-
-    async def _has_role_permission(
-        self,
-        interaction: discord.Interaction,
-    ) -> bool:
-        if not settings.command_enabled_roles:
-            logger.warning(
-                "No roles are configured to use private message commands."
-            )
-            await interaction.response.send_message(
-                "No roles are configured to use this command.",
-                ephemeral=True,
-            )
-            return False
-
-        if interaction.guild is None:
-            logger.debug(
-                "Private message command used outside of a guild."
-            )
-            await interaction.response.send_message(
-                "This command can only be used in a server.",
-                ephemeral=True,
-            )
-            return False
-
-        member = interaction.guild.get_member(interaction.user.id)
-        if member is None:
-            logger.warning(
-                f"Unable to resolve server member for user {interaction.user.id}."
-            )
-            await interaction.response.send_message(
-                "Unable to resolve your server roles.",
-                ephemeral=True,
-            )
-            return False
-
-        if not any(
-            role.id in settings.command_enabled_roles for role in member.roles
-        ):
-            logger.warning(
-                f"User {interaction.user.id} lacks required roles "
-                "to use private message commands."
-            )
-            await interaction.response.send_message(
-                "You do not have permission to use this command.",
-                ephemeral=True,
-            )
-            return False
-
-        return True
 
     def _build_dm_list_embed(
         self,
