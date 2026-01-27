@@ -97,10 +97,11 @@ class ReactionAbuserCommands(commands.Cog):
                 for mp in matched_payloads
             ))
 
+        d = '\n'.join(matched_messages)
         embed = discord.Embed(
             title="Reaction Abuser Detected",
             description=(
-                f"{'\n'.join(matched_messages)}"
+                f"{d}"
             ),
             color=discord.Color.red(),
             timestamp=datetime.now(settings.bot_time_zone),
