@@ -14,11 +14,14 @@ from bot.db.repos.emoji_abuser_repo import emoji_abuser_repo
 from bot.utils.helpers import (
     extract_reaction_payload_info,
     get_log_channel,
-    get_emoji_as_readable_utf8_str,
     encode_emoji_as_renderable,
 )
 
 class ReactionAbuserListener(commands.Cog):
+    '''
+    Dedicated to Peaky.
+    '''
+
     def __init__(self, bot: Bot) -> None:
         self.bot = bot
         self.every_minute_task.start()
