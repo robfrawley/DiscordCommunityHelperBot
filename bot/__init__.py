@@ -9,3 +9,6 @@ BASE_DIR: Path = Path(__file__).resolve().parent.parent
 
 # Path to the environment (.env) file
 ENV_FILE_PATH: Path = BASE_DIR / ".env"
+
+# Path to the cogs directory
+COGS_DIR_PATH: Path = BASE_DIR / "bot" / "cogs"

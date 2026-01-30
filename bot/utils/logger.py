@@ -1,5 +1,6 @@
 import datetime
 import sys
+from typing import Any
 from zoneinfo import ZoneInfo
 
 from discord.app_commands import AppCommand
@@ -23,9 +24,27 @@ class ConsoleLogger:
     def info(self, message: str | None) -> None:
         self._log("INFO", message, level_color="34;1")
 
+    def info_dataset(self, message: str, dataset: dict[Any, Any]) -> None:
+        self.info(f"{message}:")
+
+        max_len = max((len(str(key)) for key in dataset.keys()), default=0)
+
+        for key, value in dataset.items():
+            label = f'"{key}"'.ljust(max_len + 2)
+            self.info(f'- {label} = "{value}"')
+
     def debug(self, message: str | None) -> None:
         if self.debug_enabled:
             self._log("DEBUG", message, level_color="93")
+
+    def debug_dataset(self, message: str, dataset: dict[Any, Any]) -> None:
+        self.debug(f"{message}:")
+
+        max_len = max((len(str(key)) for key in dataset.keys()), default=0)
+
+        for key, value in dataset.items():
+            label = f'"{key}"'.ljust(max_len + 2)
+            self.debug(f'- {label} = "{value}"')
 
     def warning(self, message: str | None) -> None:
         self._log("WARN", message, level_color="91")

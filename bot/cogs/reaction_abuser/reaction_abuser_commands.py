@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from datetime import datetime
-from zoneinfo import ZoneInfo
 from collections import Counter
 
 import discord
@@ -15,7 +14,6 @@ from bot.utils.settings import settings
 from bot.views.private_message_list_paginator import PrivateMessageListPaginator
 from bot.utils.helpers import (
     check_command_role_permission,
-    get_log_channel,
     encode_emoji_as_renderable,
 )
 

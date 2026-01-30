@@ -10,7 +10,7 @@ from discord.ext import commands
 from bot.db.repos.private_message_repo import private_message_repo
 from bot.models.private_message_record import PrivateMessageRecord
 from bot.views.private_message_list_paginator import PrivateMessageListPaginator
-from bot.utils.helpers import build_dm_embed, flatten_newlines_and_strip_str, get_channel, log_dm_embed, check_command_role_permission
+from bot.utils.helpers import build_dm_embed, flatten_newlines_and_strip_str, log_dm_embed, check_command_role_permission
 from bot.utils.logger import logger
 from bot.utils.settings import settings, SettingsManager
 

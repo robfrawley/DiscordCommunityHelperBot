@@ -1,6 +1,5 @@
 from datetime import datetime
 from collections import Counter
-import re
 
 import discord
 from discord.ext import commands, tasks

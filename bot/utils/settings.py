@@ -1,12 +1,11 @@
 import json
-from typing import Any
 from zoneinfo import ZoneInfo
 from pathlib import Path
 
 from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-from bot import ENV_FILE_PATH
+from bot import ENV_FILE_PATH, COGS_DIR_PATH
 from bot.models.role_identifier import RoleIdentifier
 
 
@@ -14,8 +13,16 @@ class SettingsManager(BaseSettings):
     discord_token: str = Field()
     sqlite_db_path: str = Field()
     debug_mode: bool = Field(default=False)
+    bot_guild_id: int = Field()
     bot_time_zone: ZoneInfo = Field(default=ZoneInfo("UTC"))
+    bot_defined_cogs: list[str] = sorted([
+        f"bot.cogs.{p.name}"
+        for p in Path(COGS_DIR_PATH).iterdir()
+        if p.is_dir() and (p / "__init__.py").exists()
+    ])
+    bot_enabled_cogs: list[str] = Field(default_factory=list)
     command_enabled_roles: list[RoleIdentifier] = Field(default_factory=list)
+    command_enabled_elevated_roles: list[RoleIdentifier] = Field(default_factory=list)
     private_message_title: str = Field(default="Private Message from {sender_guild_name}")
     private_message_footer: str = Field(default="Sent by {sender_username} in {sender_guild_name}")
     private_message_log_channel_id: int | None = Field(default=None)
@@ -32,6 +39,20 @@ class SettingsManager(BaseSettings):
         extra="ignore",
         populate_by_name=True,
     )
+
+    @field_validator("bot_enabled_cogs")
+    @classmethod
+    def enabled_cogs_must_exist(cls, enabled: list[str], info):
+        defined: set[str] = set(info.data.get("bot_defined_cogs", []))
+        invalid: set[str] = set([c for c in enabled if c not in defined])
+
+        if invalid:
+            raise ValueError(
+                f"Unknown cogs in bot_enabled_cogs: {', '.join(sorted(invalid))}. "
+                f"Available cogs: {', '.join(sorted(defined))}"
+            )
+
+        return sorted(enabled)
 
     @field_validator(
         "private_message_log_channel_id",
@@ -60,7 +81,11 @@ class SettingsManager(BaseSettings):
     def normalize_bot_time_zone(cls, v):
         return ZoneInfo(v) if isinstance(v, str) else v
 
-    @field_validator("command_enabled_roles", mode="before")
+    @field_validator(
+        "command_enabled_roles",
+        "command_enabled_elevated_roles",
+        mode="before"
+    )
     @classmethod
     def parse_command_enabled_roles_json(cls, v):
         if v is None or v == "":

@@ -8,13 +8,6 @@ from bot.db.repos.emoji_payload_repo import emoji_payload_repo
 from bot.db.repos.emoji_abuser_repo import emoji_abuser_repo
 
 
-# List of bot extensions to load
-BOT_LOAD_EXTENSIONS: list[str] = [
-    "bot.cogs.private_message",
-    "bot.cogs.reaction_abuser",
-]
-
-
 class Bot(commands.Bot):
     def __init__(self, *args, **kwargs):
         kwargs.setdefault("command_prefix", "__disabled__")
@@ -32,7 +25,11 @@ class Bot(commands.Bot):
         await private_message_repo.init_schema()
 
         logger.info('Loading extensions...')
-        for ext in BOT_LOAD_EXTENSIONS:
+        if not settings.bot_enabled_cogs:
+            logger.error(
+                'No extensions to load! Enable one in your .env file.')
+
+        for ext in settings.bot_enabled_cogs:
             try:
                 await self.load_extension(ext)
                 logger.debug(f'- "{ext}" (success)')
@@ -40,7 +37,15 @@ class Bot(commands.Bot):
                 logger.warning(f'- "{ext}" (failure: {e})')
 
         logger.info('Syncing commands...')
-        logger.log_commands(await self.tree.sync())
+        if settings.debug_mode:
+            guild = await self.fetch_guild(
+                settings.bot_guild_id
+            )
+            self.tree.copy_global_to(guild=guild)
+
+        logger.log_commands(
+            await self.tree.sync(guild=guild or None)
+        )
 
     async def on_ready(self) -> None:
         logger.debug('Running on-ready hook...')
@@ -48,7 +53,9 @@ class Bot(commands.Bot):
         if not self.user:
             raise Exception("Bot user information is None.")
 
-        logger.info(f'User "{self.user.name}" with ID "{self.user.id}" is logged in and ready.')
+        logger.info(
+            f'User "{self.user.name}" with ID "{self.user.id}" is logged in and ready.'
+        )
 
     async def close(self) -> None:
         logger.debug('Closing Discord connection...')
