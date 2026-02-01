@@ -4,7 +4,7 @@ import discord
 from discord.ext import commands
 
 from bot.utils.settings import settings
-
+from bot.utils.logger import logger
 
 class MaliceTools(commands.Cog):
     def __init__(self, bot: commands.Bot) -> None:
@@ -46,8 +46,8 @@ class MaliceTools(commands.Cog):
             return
 
         # Only the specific emoji
-        if not self._emoji_matches(payload.emoji):
-            return
+        #if not self._emoji_matches(payload.emoji):
+        #    return
 
         # Fetch channel
         channel = self.bot.get_channel(payload.channel_id)
@@ -79,5 +79,6 @@ class MaliceTools(commands.Cog):
                 user = await self.bot.fetch_user(payload.user_id)
 
             await message.remove_reaction(payload.emoji, user)
+            logger.debug(f'Removed reaction: {payload.emoji} by user {payload.user_id} on message {payload.message_id}')
         except (discord.Forbidden, discord.HTTPException):
             pass
