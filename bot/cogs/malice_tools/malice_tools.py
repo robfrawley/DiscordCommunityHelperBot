@@ -13,10 +13,6 @@ class MaliceTools(commands.Cog):
         self.reactor_user_id = int(1371651018882023425)
         self.blocked_emojis = ['🧓', '👴', '👵', '🧑‍🦳']
 
-        guild = bot.get_guild(settings.bot_guild_id)
-        if guild:
-            self.guild_id = int(guild.id)
-
     def _emoji_equals(self, emoji: discord.PartialEmoji, blocked_emoji) -> bool:
             # Unicode emoji
         if isinstance(blocked_emoji, str):
@@ -38,8 +34,8 @@ class MaliceTools(commands.Cog):
             return
 
         # Optional: restrict to one guild
-        if self.guild_id is not None and payload.guild_id != self.guild_id:
-            return
+        #if self.guild_id is not None and payload.guild_id != self.guild_id:
+        #    return
 
         # Only the specific reactor user
         if payload.user_id != self.reactor_user_id:
