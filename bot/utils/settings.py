@@ -33,6 +33,17 @@ class SettingsManager(BaseSettings):
     reaction_abuser_warning_max_allowed_removal: int = Field(default=3)
     reaction_abuser_warning_ping_role_id: int | None = Field(default=None)
 
+    reply_snark_enabled: bool = Field(default=True)
+    reply_snark_target_user_ids: list[int] = Field(default_factory=list)
+    reply_snark_window_seconds: float = Field(default=60.0)
+    reply_snark_max_requests: int = Field(default=2)
+    reply_snark_max_concurrent_tasks: int = Field(default=8)
+    reply_snark_max_output_tokens: int = Field(default=48)
+    reply_snark_request_timeout_seconds: float = Field(default=12.0)
+    openai_api_key: str = Field(default="")
+    openai_model: str = Field(default="gpt-5.2")
+    openai_base_url: str = Field(default="https://api.openai.com/v1/responses")
+
     model_config = SettingsConfigDict(
         env_file=ENV_FILE_PATH,
         env_file_encoding="utf-8",
@@ -128,6 +139,50 @@ class SettingsManager(BaseSettings):
                 )
 
         return out
+
+    @field_validator("reply_snark_target_user_ids", mode="before")
+    @classmethod
+    def parse_reply_snark_target_user_ids(cls, v):
+        if v is None or v == "":
+            return []
+
+        if isinstance(v, str):
+            s = v.strip()
+            if s.startswith("["):
+                parsed = json.loads(s)
+                v = parsed
+            else:
+                parts = [p.strip() for p in s.split(",") if p.strip()]
+                v = parts
+
+        if isinstance(v, int):
+            return [v]
+
+        if not isinstance(v, (list, tuple, set)):
+            raise TypeError(
+                "reply_snark_target_user_ids must be a JSON array (or list) of ints, "
+                f"got {type(v).__name__}"
+            )
+
+        out: list[int] = []
+        for item in v:
+            if isinstance(item, int):
+                out.append(item)
+            elif isinstance(item, str) and item.isdigit():
+                out.append(int(item))
+            else:
+                raise TypeError(
+                    "reply_snark_target_user_ids items must be ints (or digit-strings); "
+                    f"got {item!r} ({type(item).__name__})"
+                )
+
+        seen: set[int] = set()
+        uniq: list[int] = []
+        for x in out:
+            if x not in seen:
+                seen.add(x)
+                uniq.append(x)
+        return uniq
 
 
 settings = SettingsManager() # type: ignore
