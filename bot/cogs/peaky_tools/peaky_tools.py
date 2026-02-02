@@ -32,11 +32,13 @@ class PeakyTools(commands.Cog):
             logger.warning(
                 "PeakyTools: Enabled but reply_snark_target_user_ids is empty; cog will never trigger."
             )
+            return
 
         if settings.reply_snark_enabled and not settings.openai_api_key:
             logger.warning(
                 "PeakyTools: Enabled but openai_api_key is empty; cog will not reply."
             )
+            return
 
     def cog_unload(self) -> None:
         for t in list(self._bg_tasks):
@@ -64,6 +66,9 @@ class PeakyTools(commands.Cog):
         if not message.reference or not message.reference.message_id:
             return
 
+        if not await self._throttle_ok(message):
+            return
+
         channel = self.bot.get_channel(message.channel.id)
         if channel is None or not isinstance(channel, discord.abc.Messageable):
             return
@@ -71,9 +76,6 @@ class PeakyTools(commands.Cog):
         try:
             msg = await channel.fetch_message(message.id)
         except Exception:
-            return
-
-        if not await self._throttle_ok(message):
             return
 
         ref = await self._fetch_referenced_message(msg)
@@ -102,13 +104,13 @@ class PeakyTools(commands.Cog):
 
         if len(timestamps) >= max_requests:
             logger.debug(
-                f"PeakyTools: Throttling user ID {user_id}; "
-                f"{len(timestamps)} triggers in last {window_seconds}s"
+                f"PeakyTools: Throttling user {msg.author} with ID {user_id} "
+                f"({len(timestamps)} triggers in last {window_seconds}s)"
             )
-            await msg.reply(
-                f"STFU and take a breath before you summon me again. (Rate limited: {len(timestamps)} triggers in last {window_seconds}s)",
-                delete_after=5.0,
-            )
+            #await msg.reply(
+            #    f"STFU and take a breath before you summon me again. (Rate limited: {len(timestamps)} triggers in last {window_seconds}s)",
+            #    delete_after=5.0,
+            #)
             return False
 
         timestamps.append(now)
