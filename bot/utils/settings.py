@@ -36,7 +36,7 @@ class SettingsManager(BaseSettings):
     reply_snark_enabled: bool = Field(default=True)
     reply_snark_target_user_ids: list[int] = Field(default_factory=list)
     reply_snark_window_seconds: float = Field(default=600.0)
-    reply_snark_max_requests: int = Field(default=2)
+    reply_snark_max_requests: int = Field(default=1)
     reply_snark_max_concurrent_tasks: int = Field(default=8)
     reply_snark_max_output_tokens: int = Field(default=48)
     reply_snark_request_timeout_seconds: float = Field(default=12.0)
