@@ -1,11 +1,11 @@
 from datetime import datetime
+from pathlib import Path
 import re
 import httpx
 
 import discord
 from discord.ext import commands
 
-from bot.core.bot import Bot
 from bot.models.emoji_payload import EmojiPayload
 from bot.models.role_identifier import RoleIdentifier
 from bot.utils.logger import ConsoleLogger

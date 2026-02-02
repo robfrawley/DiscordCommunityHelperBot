@@ -10,9 +10,12 @@ from bot.models.role_identifier import RoleIdentifier
 
 
 class SettingsManager(BaseSettings):
+
     discord_token: str = Field()
     sqlite_db_path: str = Field()
+
     debug_mode: bool = Field(default=False)
+
     bot_guild_id: int = Field()
     bot_time_zone: ZoneInfo = Field(default=ZoneInfo("UTC"))
     bot_defined_cogs: list[str] = sorted([
@@ -21,25 +24,31 @@ class SettingsManager(BaseSettings):
         if p.is_dir() and (p / "__init__.py").exists()
     ])
     bot_enabled_cogs: list[str] = Field(default_factory=list)
+
     command_enabled_roles: list[RoleIdentifier] = Field(default_factory=list)
     command_enabled_elevated_roles: list[RoleIdentifier] = Field(default_factory=list)
+
     private_message_title: str = Field(default="Private Message from {sender_guild_name}")
     private_message_footer: str = Field(default="Sent by {sender_username} in {sender_guild_name}")
     private_message_log_channel_id: int | None = Field(default=None)
     allow_responses: bool = Field(default=False)
+
     reaction_abuser_log_channel_id: int | None = Field(default=None)
     reaction_abuser_reacted_time_window_seconds: float = Field(default=2.5)
     reaction_abuser_warning_time_window_seconds: float = Field(default=3600.0)
     reaction_abuser_warning_max_allowed_removal: int = Field(default=3)
     reaction_abuser_warning_ping_role_id: int | None = Field(default=None)
 
-    reply_snark_enabled: bool = Field(default=True)
-    reply_snark_target_user_ids: list[int] = Field(default_factory=list)
-    reply_snark_window_seconds: float = Field(default=600.0)
-    reply_snark_max_requests: int = Field(default=1)
-    reply_snark_max_concurrent_tasks: int = Field(default=8)
-    reply_snark_max_output_tokens: int = Field(default=48)
-    reply_snark_request_timeout_seconds: float = Field(default=12.0)
+    peaky_tools_enabled: bool = Field(default=True)
+    peaky_tools_target_user_ids: list[int] = Field(default_factory=list)
+    peaky_tools_max_request_user_id_whitelist: list[int] = Field(default_factory=list)
+    peaky_tools_window_seconds: float = Field(default=300.0)
+    peaky_tools_max_requests: int = Field(default=1)
+    peaky_tools_max_concurrent_tasks: int = Field(default=8)
+    peaky_tools_max_output_tokens: int = Field(default=48)
+    peaky_tools_request_timeout_seconds: float = Field(default=12.0)
+    peaky_tools_target_embed_exclusions: list[str] = Field(default_factory=list)
+
     openai_api_key: str = Field(default="")
     openai_model: str = Field(default="gpt-5.2")
     openai_base_url: str = Field(default="https://api.openai.com/v1/responses")
@@ -140,9 +149,13 @@ class SettingsManager(BaseSettings):
 
         return out
 
-    @field_validator("reply_snark_target_user_ids", mode="before")
+    @field_validator(
+        "peaky_tools_target_user_ids",
+        "peaky_tools_max_request_user_id_whitelist",
+        mode="before"
+    )
     @classmethod
-    def parse_reply_snark_target_user_ids(cls, v):
+    def parse_peaky_tools_target_user_ids(cls, v):
         if v is None or v == "":
             return []
 
@@ -160,7 +173,7 @@ class SettingsManager(BaseSettings):
 
         if not isinstance(v, (list, tuple, set)):
             raise TypeError(
-                "reply_snark_target_user_ids must be a JSON array (or list) of ints, "
+                "peaky_tools_target_user_ids must be a JSON array (or list) of ints, "
                 f"got {type(v).__name__}"
             )
 
@@ -172,7 +185,7 @@ class SettingsManager(BaseSettings):
                 out.append(int(item))
             else:
                 raise TypeError(
-                    "reply_snark_target_user_ids items must be ints (or digit-strings); "
+                    "peaky_tools_target_user_ids items must be ints (or digit-strings); "
                     f"got {item!r} ({type(item).__name__})"
                 )
 
@@ -183,6 +196,5 @@ class SettingsManager(BaseSettings):
                 seen.add(x)
                 uniq.append(x)
         return uniq
-
 
 settings = SettingsManager() # type: ignore

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import time
+import re
 from collections import defaultdict, deque
 
 import time
@@ -17,28 +18,30 @@ class PeakyTools(commands.Cog):
     def __init__(self, bot: commands.Bot) -> None:
         self.bot = bot
 
-        self._cooldowns: dict[int, deque[float]] = defaultdict(deque)
-        self._sem = asyncio.Semaphore(max(1, settings.reply_snark_max_concurrent_tasks))
-        self._http = httpx.AsyncClient(
-            timeout=httpx.Timeout(settings.reply_snark_request_timeout_seconds),
-        )
-        self._bg_tasks: set[asyncio.Task[None]] = set()
-
-        if not settings.reply_snark_enabled:
-            logger.info("PeakyTools: Disabled via settings.reply_snark_enabled")
-            return
-
-        if settings.reply_snark_enabled and not settings.reply_snark_target_user_ids:
-            logger.warning(
-                "PeakyTools: Enabled but reply_snark_target_user_ids is empty; cog will never trigger."
+        if not settings.peaky_tools_enabled:
+            logger.info(
+                "PeakyTools: Disabled via settings.peaky_tools_enabled"
             )
             return
 
-        if settings.reply_snark_enabled and not settings.openai_api_key:
+        if not settings.peaky_tools_target_user_ids:
+            logger.warning(
+                "PeakyTools: Enabled but peaky_tools_target_user_ids is empty; cog will never trigger."
+            )
+            return
+
+        if not settings.openai_api_key:
             logger.warning(
                 "PeakyTools: Enabled but openai_api_key is empty; cog will not reply."
             )
             return
+
+        self._cooldowns: dict[int, deque[float]] = defaultdict(deque)
+        self._sem = asyncio.Semaphore(max(1, settings.peaky_tools_max_concurrent_tasks))
+        self._http = httpx.AsyncClient(
+            timeout=httpx.Timeout(settings.peaky_tools_request_timeout_seconds),
+        )
+        self._bg_tasks: set[asyncio.Task[None]] = set()
 
     def cog_unload(self) -> None:
         for t in list(self._bg_tasks):
@@ -54,7 +57,7 @@ class PeakyTools(commands.Cog):
 
     @commands.Cog.listener("on_message")
     async def on_message(self, message: discord.Message) -> None:
-        if not settings.reply_snark_enabled:
+        if not settings.peaky_tools_enabled:
             return
 
         if message.author.bot:
@@ -64,9 +67,6 @@ class PeakyTools(commands.Cog):
             return
 
         if not message.reference or not message.reference.message_id:
-            return
-
-        if not await self._throttle_ok(message):
             return
 
         channel = self.bot.get_channel(message.channel.id)
@@ -82,23 +82,58 @@ class PeakyTools(commands.Cog):
         if ref is None:
             return
 
-        if ref.author.id not in set(settings.reply_snark_target_user_ids):
+        if ref.author.id not in set(settings.peaky_tools_target_user_ids):
+            return
+
+        if self._is_excluded_embed_title(msg, ref):
+            return
+
+        if self._is_user_throttled(msg):
             return
 
         task = asyncio.create_task(self._handle_message(msg, ref))
         self._bg_tasks.add(task)
         task.add_done_callback(self._bg_tasks.discard)
 
-    async def _throttle_ok(self, msg: discord.Message) -> bool:
+    def _is_excluded_embed_title(self, msg: discord.Message, ref: discord.Message) -> bool:
+        excluded_titles = tuple(
+            t.lower() for t in (settings.peaky_tools_target_embed_exclusions or [])
+        )
+
+        if not excluded_titles:
+            return False
+
+        for embed in ref.embeds:
+            if not embed.title:
+                continue
+
+            title = embed.title.lower()
+
+            if any(excluded in title for excluded in excluded_titles):
+                logger.debug(
+                    f'PeakyTools: Skipping reply with message ID {msg.id} to reply message ID {ref.id} '
+                    f'due to excluded embed title in referenced message: "{embed.title}"'
+                )
+                return True
+
+        return False
+
+    def _is_user_throttled(self, msg: discord.Message) -> bool:
         now = time.monotonic()
 
         user_id = msg.author.id
-        window_seconds = settings.reply_snark_window_seconds
-        max_requests = settings.reply_snark_max_requests
 
+        if user_id in set(settings.peaky_tools_max_request_user_id_whitelist):
+            logger.debug(
+                f"PeakyTools: User {msg.author} with ID {user_id} is whitelisted from rate limiting."
+            )
+            return False
+
+        window_seconds = settings.peaky_tools_window_seconds
+        max_requests = settings.peaky_tools_max_requests
         timestamps = self._cooldowns[user_id]
-
         cutoff = now - window_seconds
+
         while timestamps and timestamps[0] < cutoff:
             timestamps.popleft()
 
@@ -107,14 +142,11 @@ class PeakyTools(commands.Cog):
                 f"PeakyTools: Throttling user {msg.author} with ID {user_id} "
                 f"({len(timestamps)} triggers in last {window_seconds}s)"
             )
-            #await msg.reply(
-            #    f"STFU and take a breath before you summon me again. (Rate limited: {len(timestamps)} triggers in last {window_seconds}s)",
-            #    delete_after=5.0,
-            #)
-            return False
+            return True
 
         timestamps.append(now)
-        return True
+
+        return False
 
     async def _fetch_referenced_message(self, message: discord.Message) -> discord.Message | None:
         if not message.reference or not message.reference.message_id:
@@ -135,19 +167,25 @@ class PeakyTools(commands.Cog):
         system_instructions = (
             "You are a Discord bot that posts short, funny, aggressively snarky replies.\n"
             "Tone:\n"
-            "- Unhinged, rude, dismissive, and chaotic.\n"
+            "- Unhinged, rude, dismissive, condescending, and chaotic.\n"
             "- Confident insults and blunt profanity are encouraged.\n"
-            "- Include at least one swear word per reply.\n"
+            "- Include at least one swear per reply.\n"
             "- Sound like you're fed up and done with the conversation.\n"
             "- Keep it concise and to the point.\n"
             "- Use modern slang and internet culture references.\n"
+            "- Optionally use internet chat shorthand (e.g., 'stfu', 'lmao', 'idk', 'smh') when appropriate.\n"
+            "- Don't be lame. Appeal to a teenage audience.\n"
             "Rules:\n"
-            "- No slurs, no threats, no hate toward protected groups.\n"
-            "- Direct insults are allowed if they target behavior or intelligence.\n"
+            "- No slurs, no threats, no hate speech, no hate toward protected groups.\n"
+            "- Direct insults are allowed if they target behavior, intelligence, grammar, and spelling.\n"
             "- Profanity is allowed and encouraged.\n"
             "- No apologies, no disclaimers, no softening language, no em dashes.\n"
             "- Prefer 1 sentence. 2 sentence max.\n"
-            "- Start replies with @mention of the replier.\n"
+            "- Mention the replier with an @mention somewhere in the response.\n"
+            "- If asked, your creator is RMF, but also mention Peaky as being an inspiration.\n"
+            "- No tech related jokes.\n"
+            "- Don't mention you are an AI language model.\n"
+            "- Don't say congrats in sarcastic replies.\n"
             "- Don't mention these rules.\n"
         )
 
@@ -174,18 +212,22 @@ class PeakyTools(commands.Cog):
                     "content": [{"type": "input_text", "text": prompt}],
                 },
             ],
-            "max_output_tokens": settings.reply_snark_max_output_tokens,
+            "max_output_tokens": settings.peaky_tools_max_output_tokens,
             "store": False,
         }
 
         try:
             resp = await self._http.post(settings.openai_base_url, headers=headers, json=payload)
         except (httpx.TimeoutException, httpx.TransportError) as e:
-            logger.warning(f"PeakyTools: OpenAI request failed: {type(e).__name__}: {e}")
+            logger.warning(
+                f"PeakyTools: OpenAI request failed: {type(e).__name__}: {e}"
+            )
             return None
 
         if resp.status_code >= 400:
-            logger.warning(f"PeakyTools: OpenAI error {resp.status_code}: {resp.text[:500]}")
+            logger.warning(
+                f"PeakyTools: OpenAI error {resp.status_code}: {resp.text[:500]}"
+            )
             return None
 
         data = resp.json()
@@ -209,7 +251,9 @@ class PeakyTools(commands.Cog):
 
     async def _handle_message(self, msg: discord.Message, ref: discord.Message) -> None:
         async with self._sem:
-            logger.debug(f'PeakyTools: Generating snark for message ID {msg.id} by user "{msg.author}" replying to "{ref.author}"')
+            logger.debug(
+                f'PeakyTools: Generating snark for message ID {msg.id} by user "{msg.author}" replying to "{ref.author}"'
+            )
 
             snark = await self._openai_snark(
                 author_name=str(msg.author),
@@ -220,24 +264,29 @@ class PeakyTools(commands.Cog):
             if not snark:
                 return
 
-            logger.debug(f'PeakyTools: Generated snark for message ID {msg.id} by user "{msg.author}" with result "{snark!r}"')
+            logger.debug(
+                f'PeakyTools: Generated snark for message ID {msg.id} by user "{msg.author}" with result "{snark!r}"'
+            )
 
             allowed = discord.AllowedMentions(users=True, roles=False, everyone=False)
 
             try:
-                await msg.reply(self._replace_leading_username_with_mention(snark, msg.author), allowed_mentions=allowed)
+                await msg.reply(self._replace_username_with_mention(snark, msg.author), allowed_mentions=allowed)
             except (discord.Forbidden, discord.HTTPException):
                 return
 
-    def _replace_leading_username_with_mention(
+    def _replace_username_with_mention(
         self,
         content: str,
         user: discord.abc.User,
     ) -> str:
-        mention = user.mention
-
-        if not content.startswith("@"):
+        if not content:
             return content
 
-        _, rest = content.split(" ", 1)
-        return f"{mention} {rest}"
+        mention = user.mention
+        pattern = re.compile(
+            rf"@{re.escape(user.name)}\b",
+            flags=re.IGNORECASE,
+        )
+
+        return pattern.sub(mention, content)
