@@ -289,4 +289,10 @@ class PeakyTools(commands.Cog):
             flags=re.IGNORECASE,
         )
 
-        return pattern.sub(mention, content)
+        content = pattern.sub(mention, content)
+
+        if not content.startswith("@"):
+            return content
+
+        _, rest = content.split(" ", 1)
+        return f"{mention} {rest}"
