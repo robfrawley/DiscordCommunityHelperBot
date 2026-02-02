@@ -68,11 +68,12 @@ class ReactionAbuserListener(commands.Cog):
 
     @tasks.loop(minutes=60)
     async def every_sixty_minutes_task(self):
-        logger.debug("Running reaction abuser cleanup task (every 60 minutes)...")
+        #logger.debug("Running reaction abuser cleanup task (every 60 minutes)...")
         pruned_count = await emoji_abuser_repo.prune(
             older_than_seconds=int(settings.reaction_abuser_warning_time_window_seconds * 2)
         )
-        logger.info(f"Pruned {pruned_count} old reaction abuser records older than {int(settings.reaction_abuser_warning_time_window_seconds * 2 // 3600)} hours.")
+        if pruned_count > 0:
+            logger.debug(f"Pruned {pruned_count} old reaction abuser records older than {int(settings.reaction_abuser_warning_time_window_seconds * 2 // 3600)} hours.")
 
     @every_sixty_minutes_task.before_loop
     async def before_every_sixty_minutes_task(self):
@@ -80,17 +81,18 @@ class ReactionAbuserListener(commands.Cog):
 
     @tasks.loop(minutes=1)
     async def every_minute_task(self):
-        logger.debug("Running reaction abuser detection task (every minute)...")
+        #logger.debug("Running reaction abuser detection task (every minute)...")
 
         abusers: list[EmojiPayload] = await emoji_abuser_repo.get_abusers_within(
             within_seconds=int(settings.reaction_abuser_warning_time_window_seconds),
             count_minimums=settings.reaction_abuser_warning_max_allowed_removal,
         )
 
-        logger.debug(f"Found {len(abusers)} reaction abuser records in the time window: {abusers}")
+        if len(abusers) > 0:
+            logger.debug(f"Found {len(abusers)} reaction abuser records in the time window: {abusers}")
 
         if not abusers:
-            logger.debug("No reaction abusers detected...")
+            #logger.debug("No reaction abusers detected...")
             return
 
         found_abusers: set[tuple[int, int, int, int, str | None]] = set()
