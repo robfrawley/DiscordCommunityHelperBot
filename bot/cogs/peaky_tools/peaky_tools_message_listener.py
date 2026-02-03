@@ -99,6 +99,42 @@ class PeakyToolsMessageListener(commands.Cog):
         return True
 
     @commands.Cog.listener("on_message")
+    async def sticker_react(self, message: discord.Message) -> None:
+        target_sticker_ids = [1442691114397208746]
+        reaction_emoji_id = 1437943804001910804
+
+        if message.author.bot:
+            return
+
+        if message.guild is None:
+            return
+
+        await self.bot.process_commands(message)
+
+        if not message.stickers:
+            return
+
+        if not any(sticker.id in target_sticker_ids for sticker in message.stickers):
+            return
+
+        emoji = message.guild.get_emoji(reaction_emoji_id) or self.bot.get_emoji(reaction_emoji_id)
+        if emoji is None:
+            return
+
+        me = message.guild.me or message.guild.get_member(self.bot.user.id)  # type: ignore[union-attr]
+        if me is None:
+            return
+
+        perms = message.channel.permissions_for(me)
+        if not perms.add_reactions:
+            return
+
+        try:
+            await message.add_reaction(emoji)
+        except (discord.Forbidden, discord.HTTPException):
+            pass
+
+    @commands.Cog.listener("on_message")
     async def on_message(self, message: discord.Message) -> None:
         if not settings.peaky_tools_enabled:
             return
