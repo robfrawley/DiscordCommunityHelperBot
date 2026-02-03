@@ -65,7 +65,7 @@ class PeakyToolsMessageListener(commands.Cog):
         )
 
         match = BLEH_REGEX.match((message.content or "").lower())
-        count = min(50, int(match.group(1))) if match else None
+        count = min(100, int(match.group(1))) if match else None
         sends = ""
 
         for _ in range(count or 0):
