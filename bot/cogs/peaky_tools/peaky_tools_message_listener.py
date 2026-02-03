@@ -79,16 +79,10 @@ class PeakyToolsMessageListener(commands.Cog):
         )
 
         try:
-            #nameMessage: discord.Message = await message.channel.send(
-            #    message.author.mention + f" Here are your {count} visi-bleh emojis:"
-            #)
-            mainMessage: discord.Message = await message.channel.send(
-                content=message.author.mention,
-                embed=discord.Embed(
-                    description=sends,
-                    color=discord.Color.dark_magenta(),
-                )
+            nameMessage: discord.Message = await message.channel.send(
+                message.author.mention + f" Here are your {count} visi-bleh emojis:"
             )
+            mainMessage: discord.Message = await nameMessage.reply(sends)
             await mainMessage.add_reaction(CUTE_EMOJI)
         except Exception as e:
             logger.error(f"PeakyTools: Failed to send bleh message or add cute reaction: {e}")
