@@ -80,12 +80,9 @@ class PeakyToolsMessageListener(commands.Cog):
 
         try:
             sent: discord.Message = await message.channel.send(sends)
-            try:
-                for _ in range(count or 0): await sent.add_reaction(CUTE_EMOJI)
-            except Exception as e:
-                logger.error(f"PeakyTools: Failed to attach cute emoji reaction: {e}")
+            await sent.add_reaction(CUTE_EMOJI)
         except Exception as e:
-            logger.error(f"PeakyTools: Failed to send bleh message: {e}")
+            logger.error(f"PeakyTools: Failed to send bleh message or add cute reaction: {e}")
 
         try:
             await message.delete()
