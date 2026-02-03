@@ -69,7 +69,7 @@ class PeakyToolsMessageListener(commands.Cog):
         sends = ""
 
         for _ in range(count or 0):
-            sends += BLEH_EMOJI + " "
+            sends += BLEH_EMOJI
 
         if not sends:
             return False
@@ -79,7 +79,7 @@ class PeakyToolsMessageListener(commands.Cog):
         )
 
         try:
-            sent: discord.Message = await message.channel.send(message.author.mention + " " + sends)
+            sent: discord.Message = await message.channel.send(sends)
             try:
                 for _ in range(count or 0): await sent.add_reaction(CUTE_EMOJI)
             except Exception as e:
