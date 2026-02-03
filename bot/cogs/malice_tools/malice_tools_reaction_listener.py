@@ -6,7 +6,7 @@ from discord.ext import commands
 from bot.utils.settings import settings
 from bot.utils.logger import logger
 
-class MaliceTools(commands.Cog):
+class MaliceToolsReactionListener(commands.Cog):
     def __init__(self, bot: commands.Bot) -> None:
         self.bot = bot
         self.target_user_id = int(502928871432257536)

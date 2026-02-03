@@ -7,6 +7,7 @@ from collections import defaultdict, deque
 
 import time
 import discord
+from discord import app_commands
 import httpx
 from discord.ext import commands
 
@@ -14,7 +15,7 @@ from bot.utils.logger import logger
 from bot.utils.settings import settings
 
 
-class PeakyTools(commands.Cog):
+class PeakyToolsMessageListener(commands.Cog):
     def __init__(self, bot: commands.Bot) -> None:
         self.bot = bot
 
@@ -55,6 +56,44 @@ class PeakyTools(commands.Cog):
         if loop and not loop.is_closed():
             loop.create_task(self._http.aclose())
 
+    async def _handle_bleh_generation_request(self, message: discord.Message) -> bool:
+        CUTE_EMOJI: str = '<:VisiCute:1437943804001910804>'
+        BLEH_EMOJI: str = '<:VisiBleh:1442691067597164665>'
+        BLEH_REGEX: re.Pattern = re.compile(
+            r'^bleh:\s*([0-9]+)\s*$',
+            flags=re.IGNORECASE,
+        )
+
+        match = BLEH_REGEX.match((message.content or "").lower())
+        count = min(20, int(match.group(1))) if match else None
+        sends = ""
+
+        for _ in range(count or 0):
+            sends += BLEH_EMOJI + " "
+
+        if not sends:
+            return False
+
+        logger.debug(
+            f'PeakyTools: Handling "bleh" generation request message ID {message.id} by user "{message.author}": "{message.content}" ({count})'
+        )
+
+        try:
+            sent: discord.Message = await message.channel.send(message.author.mention + " " + sends)
+            try:
+                for _ in range(count or 0): await sent.add_reaction(CUTE_EMOJI)
+            except Exception as e:
+                logger.error(f"PeakyTools: Failed to attach cute emoji reaction: {e}")
+        except Exception as e:
+            logger.error(f"PeakyTools: Failed to send bleh message: {e}")
+
+        try:
+            await message.delete()
+        except Exception as e:
+            logger.error(f"PeakyTools: Failed to remove trigger message: {e}")
+
+        return True
+
     @commands.Cog.listener("on_message")
     async def on_message(self, message: discord.Message) -> None:
         if not settings.peaky_tools_enabled:
@@ -64,6 +103,9 @@ class PeakyTools(commands.Cog):
             return
 
         if message.guild is None:
+            return
+
+        if await self._handle_bleh_generation_request(message):
             return
 
         if not message.reference or not message.reference.message_id:
