@@ -60,13 +60,13 @@ class PeakyToolsMessageListener(commands.Cog):
         CUTE_EMOJI: str = '<:VisiCute:1437943804001910804>'
         BLEH_EMOJI: str = '<:VisiBleh:1442691067597164665>'
         BLEH_REGEX: re.Pattern = re.compile(
-            r'^(blehr?):\s*([0-9]+)\s*$',
+            r'^(bleho?):\s*([0-9]+)\s*$',
             flags=re.IGNORECASE,
         )
 
         match = BLEH_REGEX.match((message.content or "").lower())
         count = min(100, int(match.group(2))) if match else None
-        reply = match.group(1).endswith('r') if match else False
+        reply = not (match.group(1).endswith('o') if match else False)
         sends = ""
 
         for _ in range(count or 0):
