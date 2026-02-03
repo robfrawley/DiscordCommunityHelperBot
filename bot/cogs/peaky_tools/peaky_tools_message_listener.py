@@ -65,11 +65,12 @@ class PeakyToolsMessageListener(commands.Cog):
         )
 
         match = BLEH_REGEX.match((message.content or "").lower())
-        count = min(100, int(match.group(2))) if match else None
+        count = min(200, int(match.group(2))) if match else None
         sends = ""
 
         for _ in range(count or 0):
-            sends += BLEH_EMOJI
+            if len(sends) + len(BLEH_EMOJI) < 4000:
+                sends += BLEH_EMOJI
 
         if not sends:
             return False
