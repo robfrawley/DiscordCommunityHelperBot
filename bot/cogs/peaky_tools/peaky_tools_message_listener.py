@@ -66,7 +66,6 @@ class PeakyToolsMessageListener(commands.Cog):
 
         match = BLEH_REGEX.match((message.content or "").lower())
         count = min(100, int(match.group(2))) if match else None
-        reply = not (match.group(1).endswith('o') if match else False)
         sends = ""
 
         for _ in range(count or 0):
@@ -80,14 +79,22 @@ class PeakyToolsMessageListener(commands.Cog):
         )
 
         try:
-            sent: discord.Message = await message.reply(sends) if reply else await message.channel.send(sends)
-            await sent.add_reaction(CUTE_EMOJI)
+            #nameMessage: discord.Message = await message.channel.send(
+            #    message.author.mention + f" Here are your {count} visi-bleh emojis:"
+            #)
+            mainMessage: discord.Message = await message.channel.send(
+                content=message.author.mention,
+                embed=discord.Embed(
+                    description=sends,
+                    color=discord.Color.dark_magenta(),
+                )
+            )
+            await mainMessage.add_reaction(CUTE_EMOJI)
         except Exception as e:
             logger.error(f"PeakyTools: Failed to send bleh message or add cute reaction: {e}")
 
         try:
-            if not reply:
-                await message.delete()
+            await message.delete()
         except Exception as e:
             logger.error(f"PeakyTools: Failed to remove trigger message: {e}")
 
