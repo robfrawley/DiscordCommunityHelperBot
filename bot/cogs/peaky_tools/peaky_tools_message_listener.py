@@ -60,12 +60,13 @@ class PeakyToolsMessageListener(commands.Cog):
         CUTE_EMOJI: str = '<:VisiCute:1437943804001910804>'
         BLEH_EMOJI: str = '<:VisiBleh:1442691067597164665>'
         BLEH_REGEX: re.Pattern = re.compile(
-            r'^bleh:\s*([0-9]+)\s*$',
+            r'^(blehr?):\s*([0-9]+)\s*$',
             flags=re.IGNORECASE,
         )
 
         match = BLEH_REGEX.match((message.content or "").lower())
-        count = min(100, int(match.group(1))) if match else None
+        count = min(100, int(match.group(2))) if match else None
+        reply = match.group(1).endswith('r') if match else False
         sends = ""
 
         for _ in range(count or 0):
@@ -79,13 +80,14 @@ class PeakyToolsMessageListener(commands.Cog):
         )
 
         try:
-            sent: discord.Message = await message.channel.send(sends)
+            sent: discord.Message = await message.reply(sends) if reply else await message.channel.send(sends)
             await sent.add_reaction(CUTE_EMOJI)
         except Exception as e:
             logger.error(f"PeakyTools: Failed to send bleh message or add cute reaction: {e}")
 
         try:
-            await message.delete()
+            if not reply:
+                await message.delete()
         except Exception as e:
             logger.error(f"PeakyTools: Failed to remove trigger message: {e}")
 
