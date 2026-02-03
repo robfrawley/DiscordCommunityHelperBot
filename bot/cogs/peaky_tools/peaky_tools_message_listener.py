@@ -69,7 +69,7 @@ class PeakyToolsMessageListener(commands.Cog):
         sends = ""
 
         for _ in range(count or 0):
-            if len(sends) + len(BLEH_EMOJI) < 4000:
+            if len(sends) + len(BLEH_EMOJI) < 2000:
                 sends += BLEH_EMOJI
 
         if not sends:
