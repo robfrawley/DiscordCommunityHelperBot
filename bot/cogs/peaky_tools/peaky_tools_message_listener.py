@@ -66,22 +66,25 @@ class PeakyToolsMessageListener(commands.Cog):
 
         match = BLEH_REGEX.match((message.content or "").lower())
         count = min(200, int(match.group(2))) if match else None
+        realc = 0
         sends = ""
 
         for _ in range(count or 0):
-            if len(sends) + len(BLEH_EMOJI) < 2000:
-                sends += BLEH_EMOJI
+            if len(sends) + len(BLEH_EMOJI) > 2000:
+                break
+            sends += BLEH_EMOJI
+            realc += 1
 
         if not sends:
             return False
 
         logger.debug(
-            f'PeakyTools: Handling "bleh" generation request message ID {message.id} by user "{message.author}": "{message.content}" ({count})'
+            f'PeakyTools: Handling "bleh" generation request message ID {message.id} by user "{message.author}": "{message.content}" ({realc})'
         )
 
         try:
             nameMessage: discord.Message = await message.channel.send(
-                message.author.mention + f" Here are your {count} visi-bleh emojis:"
+                message.author.mention + f" Here are your {realc} visi-bleh emojis:"
             )
             mainMessage: discord.Message = await nameMessage.reply(sends)
             await mainMessage.add_reaction(CUTE_EMOJI)
