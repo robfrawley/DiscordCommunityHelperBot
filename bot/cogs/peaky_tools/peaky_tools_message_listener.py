@@ -100,6 +100,9 @@ class PeakyToolsMessageListener(commands.Cog):
 
     @commands.Cog.listener("on_message")
     async def sticker_react(self, message: discord.Message) -> None:
+        await self.bot.process_commands(message)
+        return
+
         target_sticker_ids = [1442691114397208746, 1464442613472956447]
         reaction_emoji_id = 1437943804001910804
 
@@ -108,8 +111,6 @@ class PeakyToolsMessageListener(commands.Cog):
 
         if message.guild is None:
             return
-
-        await self.bot.process_commands(message)
 
         if not message.stickers:
             return
