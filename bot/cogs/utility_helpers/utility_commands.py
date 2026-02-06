@@ -11,7 +11,7 @@ from discord.ext import commands
 
 from bot.utils.logger import logger
 from bot.utils.settings import settings
-from bot.utils.helpers import check_command_role_permission
+from bot.utils.helpers import check_command_role_permission, chunk_text
 from bot.views.confirm_apply_roles_view import ConfirmApplyRolesView
 
 
@@ -154,6 +154,83 @@ class ApplyRolesResult:
 class UtilityCommands(commands.Cog):
     def __init__(self, bot: commands.Bot) -> None:
         self.bot = bot
+
+    @app_commands.command(
+        name="util_get_all_matching_users",
+        description="Get all users with specific roles. Input can be role mentions, IDs, or exact names.",
+    )
+    @app_commands.describe(
+        searched_roles="Roles a user MUST have (mentions, IDs, or exact names).",
+        excluded_roles="Skip members who have ANY of these roles. Optional.",
+        exclude_bots="Exclude bot accounts from the results.",
+    )
+    async def util_get_all_matching_users(
+        self,
+        interaction: discord.Interaction,
+        *,
+        searched_roles: app_commands.Transform[list[discord.Role], RoleListTransformer],
+        excluded_roles: app_commands.Transform[list[discord.Role], RoleListTransformer] | None = None,
+        exclude_bots: bool = True,
+    ) -> None:
+        if not interaction.guild:
+            await interaction.response.send_message(
+                "This command can only be used in a server.",
+                ephemeral=True,
+            )
+            return
+
+        guild = interaction.guild
+
+        searched_role_ids = {r.id for r in searched_roles}
+        excluded_role_ids = {r.id for r in (excluded_roles or [])}
+
+        matched: list[discord.Member] = []
+
+        for member in guild.members:
+            if exclude_bots and member.bot:
+                logger.debug(f'Skipping bot member {member} ({member.id})...')
+                continue
+
+            member_role_ids = {r.id for r in member.roles}
+
+            if not searched_role_ids.issubset(member_role_ids):
+                logger.debug(f'Skipping member {member} ({member.id}) due to missing required role...')
+                continue
+
+            if excluded_role_ids & member_role_ids:
+                logger.debug(f'Skipping member {member} ({member.id}) due to excluded role...')
+                continue
+
+            logger.debug(f'Member "{member}" ({member.id}) matches the role criteria.')
+            matched.append(member)
+
+        role_mentions = ", ".join(r.mention for r in searched_roles)
+        lines = [f"{m.mention} — {m} (`{m.id}`)" for m in matched] or ["(none)"]
+
+        header = (
+            f"**Required roles:** {role_mentions}\n"
+            f"**Matched users:** {len(matched)}\n"
+        )
+
+        if excluded_roles:
+            ex_mentions = ", ".join(r.mention for r in excluded_roles)
+            header += f"**Excluded roles:** {ex_mentions}\n"
+
+        header += "\n"
+
+        full_text = header + "\n".join(lines)
+        chunks = chunk_text(full_text, limit=2000)
+
+        await interaction.response.send_message(
+            chunks[0],
+            allowed_mentions=discord.AllowedMentions.none(),
+        )
+
+        for chunk in chunks[1:]:
+            await interaction.followup.send(
+                chunk,
+                allowed_mentions=discord.AllowedMentions.none(),
+            )
 
     @app_commands.command(
         name="util_apply_roles",

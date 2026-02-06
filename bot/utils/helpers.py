@@ -14,6 +14,28 @@ from bot.models.private_message_record import PrivateMessageRecord
 from bot.utils.logger import logger
 from bot.utils.settings import settings
 
+def chunk_text(text: str, limit: int = 1900) -> list[str]:
+    if len(text) <= limit:
+        return [text]
+
+    chunks: list[str] = []
+    start = 0
+    n = len(text)
+
+    while start < n:
+        end = min(start + limit, n)
+
+        if end < n:
+            nl = text.rfind("\n", start, end)
+            if nl != -1 and nl > start:
+                end = nl + 1  # keep the newline
+        chunk = text[start:end].rstrip("\n")
+        if chunk:
+            chunks.append(chunk)
+        start = end
+
+    return chunks
+
 def flatten_newlines_and_strip_str(text: str) -> str:
     return " ".join(line.strip() for line in text.splitlines() if line.strip())
 
