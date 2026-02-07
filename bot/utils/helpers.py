@@ -14,6 +14,23 @@ from bot.models.private_message_record import PrivateMessageRecord
 from bot.utils.logger import logger
 from bot.utils.settings import settings
 
+_LEADING_MENTION_RE = re.compile(
+    r"""
+    ^\s*                      # optional leading whitespace
+    (?:                        # one mention
+        <@!?\d+>               # Discord user mention
+        |@[\w.-]+              # @username
+    )
+    \s*                       # trailing space after mention
+    """,
+    re.VERBOSE | re.IGNORECASE,
+)
+
+def strip_leading_mention(text: str) -> str:
+    if not text:
+        return text
+    return _LEADING_MENTION_RE.sub("", text, count=1)
+
 def chunk_text(text: str, limit: int = 1900) -> list[str]:
     if len(text) <= limit:
         return [text]

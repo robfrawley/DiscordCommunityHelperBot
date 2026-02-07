@@ -13,6 +13,7 @@ from discord.ext import commands
 
 from bot.utils.logger import logger
 from bot.utils.settings import settings
+from bot.utils.helpers import strip_leading_mention
 
 
 class PeakyToolsMessageListener(commands.Cog):
@@ -363,6 +364,11 @@ class PeakyToolsMessageListener(commands.Cog):
         if not content:
             return content
 
+        content = strip_leading_mention(content)
+        content = self._ensure_leading_mention(content, user)
+
+        return content
+
         mention = user.mention
         pattern = re.compile(
             rf"@{re.escape(user.name)}\b",
@@ -372,7 +378,31 @@ class PeakyToolsMessageListener(commands.Cog):
         content = pattern.sub(mention, content)
 
         if not content.startswith("@"):
+            content = self._ensure_leading_mention(content, user)
+
+        if not " " in content:
             return content
 
         _, rest = content.split(" ", 1)
         return f"{mention} {rest}"
+
+    def _ensure_leading_mention(
+        self,
+        content: str,
+        user: discord.abc.User,
+    ) -> str:
+        if not content:
+            return user.mention
+
+        mention = user.mention
+
+        pattern = re.compile(
+            rf"@{re.escape(user.name)}\b",
+            flags=re.IGNORECASE,
+        )
+        content = pattern.sub(mention, content).strip()
+
+        if content.startswith(mention):
+            return content
+
+        return f"{mention} {content}"
