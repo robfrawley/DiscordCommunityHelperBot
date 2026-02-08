@@ -41,6 +41,7 @@ class SettingsManager(BaseSettings):
 
     peaky_tools_enabled: bool = Field(default=True)
     peaky_tools_target_user_ids: list[int] = Field(default_factory=list)
+    peaky_tools_nice_user_ids: list[int] = Field(default_factory=list)
     peaky_tools_max_request_user_id_whitelist: list[int] = Field(default_factory=list)
     peaky_tools_window_seconds: float = Field(default=300.0)
     peaky_tools_max_requests: int = Field(default=2)
@@ -50,7 +51,8 @@ class SettingsManager(BaseSettings):
     peaky_tools_target_embed_exclusions: list[str] = Field(default_factory=list)
 
     openai_api_key: str = Field(default="")
-    openai_model: str = Field(default="gpt-5.2")
+    openai_mean_model: str = Field(default="gpt-5.2")
+    openai_nice_model: str = Field(default="gpt-5.2")
     openai_base_url: str = Field(default="https://api.openai.com/v1/responses")
 
     model_config = SettingsConfigDict(
@@ -151,11 +153,12 @@ class SettingsManager(BaseSettings):
 
     @field_validator(
         "peaky_tools_target_user_ids",
+        "peaky_tools_nice_user_ids",
         "peaky_tools_max_request_user_id_whitelist",
         mode="before"
     )
     @classmethod
-    def parse_peaky_tools_target_user_ids(cls, v):
+    def parse_user_ids(cls, v):
         if v is None or v == "":
             return []
 
@@ -173,7 +176,7 @@ class SettingsManager(BaseSettings):
 
         if not isinstance(v, (list, tuple, set)):
             raise TypeError(
-                "peaky_tools_target_user_ids must be a JSON array (or list) of ints, "
+                "user_ids must be a JSON array (or list) of ints, "
                 f"got {type(v).__name__}"
             )
 
@@ -185,7 +188,7 @@ class SettingsManager(BaseSettings):
                 out.append(int(item))
             else:
                 raise TypeError(
-                    "peaky_tools_target_user_ids items must be ints (or digit-strings); "
+                    "user_ids items must be ints (or digit-strings); "
                     f"got {item!r} ({type(item).__name__})"
                 )
 
