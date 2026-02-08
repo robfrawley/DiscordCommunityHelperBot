@@ -112,9 +112,6 @@ class PeakyToolsExpressionListener(commands.Cog):
             color=disnake.Color.blurple(),
         )
 
-        if uploader:
-            embed.title = (f"New {kind.upper()} Added by {uploader}")
-
         embed.add_field(
             name="Name:",
             value=f"`{name}`",
@@ -168,9 +165,9 @@ class PeakyToolsExpressionListener(commands.Cog):
             return
 
         try:
-            await channel.send(content=None, embed=embed)
+            await channel.send(content=uploader.mention if uploader else None, embed=embed)
         except disnake.HTTPException as e:
-            logger.warning(f"[PeakyAssetLogger] Failed to send log message in guild {guild.id}: {e}")
+            logger.warning(f"[PeakyAssetLogger] Failed to send log message in guild \"{guild.id}\": {e}")
 
     def _asset_created_at(self, asset: object) -> datetime:
         asset_id = getattr(asset, "id", None)
