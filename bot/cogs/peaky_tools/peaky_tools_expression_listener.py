@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import asyncio
-from typing import Optional
+from datetime import datetime
 
 import disnake
 from disnake.ext import commands
@@ -95,7 +95,6 @@ class PeakyToolsExpressionListener(commands.Cog):
                     return u, entry.reason
                 return None, entry.reason
         return None, None
-
     def _asset_embed(
         self,
         *,
@@ -106,40 +105,56 @@ class PeakyToolsExpressionListener(commands.Cog):
         preview_url: str | None,
         uploader: disnake.abc.User | None,
         reason: str | None,
+        created_at: datetime | None = None,
     ) -> disnake.Embed:
         embed = disnake.Embed(
             title=f"New {kind.upper()} Added",
             color=disnake.Color.blurple(),
         )
+
+        if uploader:
+            embed.title = (f"New {kind.upper()} Added by {uploader}")
+
         embed.add_field(
             name="Name:",
-            value=f"**{name}**",
+            value=f"`{name}`",
             inline=True,
         )
-        embed.add_field(
-            name="ID:",
-            value=f"`{asset_id}`",
-            inline=True,
-        )
-        embed.add_field(
-            name="Link:",
-            value=f"{preview_url}" if preview_url else "N/A",
-            inline=False,
-        )
+
+        #embed.add_field(
+        #    name="ID:",
+        #    value=f"`{asset_id}`",
+        #    inline=True,
+        #)
+
         embed.add_field(
             name="Uploader:",
-            value=(uploader.mention if uploader else "*Unknown (missing audit log perms or not found yet)*"),
+            value=(uploader.mention if uploader else "*Unknown*"),
+            inline=True,
+        )
+
+        if created_at is not None:
+            ts = int(created_at.timestamp())
+            embed.add_field(
+                name="Created:",
+                value=f"<t:{ts}:F> (<t:{ts}:R>)",
+                inline=False,
+            )
+
+        embed.add_field(
+            name="Link:",
+            value=f"{preview_url}" if preview_url else None,
             inline=False,
         )
+
         if reason:
             embed.add_field(name="Reason", value=reason, inline=False)
 
-        if preview_url and kind == "Emoji":
-            embed.set_thumbnail(url=preview_url)
-        elif preview_url and kind == "Sticker":
+        if preview_url:
             embed.set_thumbnail(url=preview_url)
 
         return embed
+
 
     async def _post_asset_log(
         self,
@@ -156,6 +171,13 @@ class PeakyToolsExpressionListener(commands.Cog):
             await channel.send(content=None, embed=embed)
         except disnake.HTTPException as e:
             logger.warning(f"[PeakyAssetLogger] Failed to send log message in guild {guild.id}: {e}")
+
+    def _asset_created_at(self, asset: object) -> datetime:
+        asset_id = getattr(asset, "id", None)
+        if isinstance(asset_id, int):
+            return disnake.utils.snowflake_time(asset_id)
+
+        return disnake.utils.utcnow()
 
     @commands.Cog.listener()
     async def on_guild_stickers_update(
@@ -191,9 +213,10 @@ class PeakyToolsExpressionListener(commands.Cog):
                 preview_url=str(preview_url) if preview_url else None,
                 uploader=uploader,
                 reason=reason,
+                created_at=self._asset_created_at(sticker),
             )
             await self._post_asset_log(guild=guild, embed=embed, uploader=uploader)
-            logger.info(f"[PeakyAssetLogger] Logged new sticker {sticker.name} ({sticker.id}) in guild {guild.id} from uploader {uploader}")
+            logger.info(f"[PeakyAssetLogger] Logged new STICKER \"{sticker.name}\" ({sticker.id}) in guild \"{guild.id}\" from uploader \"{uploader}\"")
 
         self.known_stickers[guild.id] = current_ids
 
@@ -231,9 +254,10 @@ class PeakyToolsExpressionListener(commands.Cog):
                 preview_url=preview_url,
                 uploader=uploader,
                 reason=reason,
+                created_at=self._asset_created_at(emoji),
             )
             await self._post_asset_log(guild=guild, embed=embed, uploader=uploader)
-            logger.info(f"[PeakyAssetLogger] Logged new emoji {emoji.name} ({emoji.id}) in guild {guild.id} from uploader {uploader}")
+            logger.info(f"[PeakyAssetLogger] Logged new EMOJI \"{emoji.name}\" ({emoji.id}) in guild \"{guild.id}\" from uploader \"{uploader}\"")
 
         self.known_emojis[guild.id] = current_ids
 
@@ -283,7 +307,6 @@ class PeakyToolsExpressionListener(commands.Cog):
             delay_seconds=0.5,
             max_entries=500,
         )
-
         sticker_audit = await self._fetch_audit_entries_paginated(
             guild,
             action=disnake.AuditLogAction.sticker_create,
@@ -291,36 +314,54 @@ class PeakyToolsExpressionListener(commands.Cog):
             max_entries=500,
         )
 
-        # Post emojis
+        # Build a single timeline: (created_at, kind, obj)
+        timeline: list[tuple[datetime, str, disnake.Emoji | disnake.GuildSticker]] = []
+
         for e in emojis:
-            uploader, reason = self._match_uploader_for_emoji(e, emoji_audit)
-            embed = self._asset_embed(
-                guild=guild,
-                kind="Emoji",
-                name=e.name,
-                asset_id=e.id,
-                preview_url=str(e.url) if getattr(e, "url", None) else None,
-                uploader=uploader,
-                reason=reason,
-            )
+            timeline.append((self._asset_created_at(e), "Emoji", e))
+
+        for s in stickers:
+            timeline.append((self._asset_created_at(s), "Sticker", s))
+
+        # Sort by added date (oldest -> newest).
+        timeline.sort(key=lambda t: t[0])
+
+        logger.info(f"[PeakyAssetLogger] Dumping {len(timeline)} assets in guild \"{guild.id}\" to channel \"{chan_id}\".")
+
+        # Post in date order, interleaving emojis + stickers
+        for created_at, kind, obj in timeline:
+            if kind == "Emoji":
+                e: disnake.Emoji = obj  # type: ignore[assignment]
+                uploader, reason = self._match_uploader_for_emoji(e, emoji_audit)
+                embed = self._asset_embed(
+                    guild=guild,
+                    kind="Emoji",
+                    name=e.name,
+                    asset_id=e.id,
+                    preview_url=str(e.url) if getattr(e, "url", None) else None,
+                    uploader=uploader,
+                    reason=reason,
+                    created_at=created_at,
+                )
+            else:
+                s: disnake.GuildSticker = obj  # type: ignore[assignment]
+                uploader, reason = self._match_uploader_for_sticker(s, sticker_audit)
+                preview_url = getattr(s, "url", None)
+                embed = self._asset_embed(
+                    guild=guild,
+                    kind="Sticker",
+                    name=s.name,
+                    asset_id=s.id,
+                    preview_url=str(preview_url) if preview_url else None,
+                    uploader=uploader,
+                    reason=reason,
+                    created_at=created_at,
+                )
+            logger.debug(f"[PeakyAssetLogger] Logged new {kind.upper()} \"{obj.name}\" ({obj.id}) in guild \"{guild.id}\" from uploader \"{uploader}\"")
+
             await self._post_asset_log(guild=guild, embed=embed, uploader=uploader)
             await asyncio.sleep(0.2)  # gentle pacing
 
-        # Post stickers
-        for s in stickers:
-            uploader, reason = self._match_uploader_for_sticker(s, sticker_audit)
-            preview_url = getattr(s, "url", None)
-            embed = self._asset_embed(
-                guild=guild,
-                kind="Sticker",
-                name=s.name,
-                asset_id=s.id,
-                preview_url=str(preview_url) if preview_url else None,
-                uploader=uploader,
-                reason=reason,
-            )
-            await self._post_asset_log(guild=guild, embed=embed, uploader=uploader)
-            await asyncio.sleep(0.2)  # gentle pacing
 
     async def _fetch_audit_entries_paginated(
         self,
