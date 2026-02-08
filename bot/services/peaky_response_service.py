@@ -6,10 +6,9 @@ import re
 from collections import defaultdict, deque
 
 import time
-import discord
-from discord import app_commands
+import disnake
 import httpx
-from discord.ext import commands
+from disnake.ext import commands
 
 from bot.utils.logger import logger
 from bot.utils.settings import settings
@@ -39,6 +38,9 @@ class PeakyResponseService(commands.Cog):
             )
             return
 
+        self._target_ids = frozenset(settings.peaky_tools_target_user_ids)
+        self._whitelist_ids = frozenset(settings.peaky_tools_max_request_user_id_whitelist or [])
+
         self._cooldowns: dict[int, deque[float]] = defaultdict(deque)
         self._sem = asyncio.Semaphore(max(1, settings.peaky_tools_max_concurrent_tasks))
         self._http = httpx.AsyncClient(
@@ -58,7 +60,7 @@ class PeakyResponseService(commands.Cog):
         if loop and not loop.is_closed():
             loop.create_task(self._http.aclose())
 
-    async def handle(self, message: discord.Message) -> None:
+    async def handle(self, message: disnake.Message) -> None:
         if not settings.peaky_tools_enabled:
             return
 
@@ -72,7 +74,7 @@ class PeakyResponseService(commands.Cog):
             return
 
         channel = self.bot.get_channel(message.channel.id)
-        if channel is None or not isinstance(channel, discord.abc.Messageable):
+        if channel is None or not isinstance(channel, disnake.abc.Messageable):
             return
 
         try:
@@ -84,7 +86,7 @@ class PeakyResponseService(commands.Cog):
         if ref is None:
             return
 
-        if ref.author.id not in set(settings.peaky_tools_target_user_ids):
+        if ref.author.id not in self._target_ids:
             return
 
         if self._is_excluded_embed_title(msg, ref):
@@ -97,7 +99,7 @@ class PeakyResponseService(commands.Cog):
         self._bg_tasks.add(task)
         task.add_done_callback(self._bg_tasks.discard)
 
-    def _is_excluded_embed_title(self, msg: discord.Message, ref: discord.Message) -> bool:
+    def _is_excluded_embed_title(self, msg: disnake.Message, ref: disnake.Message) -> bool:
         excluded_titles = tuple(
             t.lower() for t in (settings.peaky_tools_target_embed_exclusions or [])
         )
@@ -120,12 +122,12 @@ class PeakyResponseService(commands.Cog):
 
         return False
 
-    def _is_user_throttled(self, msg: discord.Message) -> bool:
+    def _is_user_throttled(self, msg: disnake.Message) -> bool:
         now = time.monotonic()
 
         user_id = msg.author.id
 
-        if user_id in set(settings.peaky_tools_max_request_user_id_whitelist):
+        if user_id in self._whitelist_ids:
             logger.debug(
                 f"PeakyTools: User {msg.author} with ID {user_id} is whitelisted from rate limiting."
             )
@@ -150,19 +152,19 @@ class PeakyResponseService(commands.Cog):
 
         return False
 
-    async def _fetch_referenced_message(self, message: discord.Message) -> discord.Message | None:
+    async def _fetch_referenced_message(self, message: disnake.Message) -> disnake.Message | None:
         if not message.reference or not message.reference.message_id:
             return None
 
-        if isinstance(message.reference.resolved, discord.Message):
+        if isinstance(message.reference.resolved, disnake.Message):
             return message.reference.resolved
 
         try:
             return await message.channel.fetch_message(message.reference.message_id)
-        except (discord.NotFound, discord.Forbidden, discord.HTTPException):
+        except (disnake.NotFound, disnake.Forbidden, disnake.HTTPException):
             return None
 
-    async def _handle_message(self, msg: discord.Message, ref: discord.Message) -> None:
+    async def _handle_message(self, msg: disnake.Message, ref: disnake.Message) -> None:
         async with self._sem:
             logger.debug(
                 f'PeakyTools: Starting generation of peaky message in reply to "{msg.author}@{msg.id}" <- "{ref.author}" (mode: {"nice" if self.nice else "snarky"})'
@@ -181,11 +183,11 @@ class PeakyResponseService(commands.Cog):
                 f'PeakyTools: Finished generation of peaky message in reply to "{msg.author}@{msg.id}" with result "{snark!r}"'
             )
 
-            allowed = discord.AllowedMentions(users=True, roles=False, everyone=False)
+            allowed = disnake.AllowedMentions(users=True, roles=False, everyone=False)
 
             try:
                 await msg.reply(self._replace_username_with_mention(snark, msg.author), allowed_mentions=allowed)
-            except (discord.Forbidden, discord.HTTPException):
+            except (disnake.Forbidden, disnake.HTTPException):
                 return
 
     def _generate_system_tone_instructions(self) -> str:
@@ -225,7 +227,7 @@ class PeakyResponseService(commands.Cog):
         )
 
         if not self.nice:
-            return (
+            rules += (
                 "- Direct insults are allowed if they target behavior, intelligence, grammar, and spelling.\n"
             )
 
@@ -319,7 +321,7 @@ class PeakyResponseService(commands.Cog):
     def _replace_username_with_mention(
         self,
         content: str,
-        user: discord.abc.User,
+        user: disnake.abc.User,
     ) -> str:
         if not content:
             return content
@@ -332,7 +334,7 @@ class PeakyResponseService(commands.Cog):
     def _ensure_leading_mention(
         self,
         content: str,
-        user: discord.abc.User,
+        user: disnake.abc.User,
     ) -> str:
         if not content:
             return user.mention

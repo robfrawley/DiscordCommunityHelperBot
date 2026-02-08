@@ -1,6 +1,8 @@
-from bot.core.bot import Bot
+from disnake.ext import commands
 from bot.cogs.peaky_tools.peaky_tools_message_listener import PeakyToolsMessageListener
+from bot.cogs.peaky_tools.peaky_tools_expression_listener import PeakyToolsExpressionListener
 
 
-async def setup(bot: Bot) -> None:
-    await bot.add_cog(PeakyToolsMessageListener(bot))
+def setup(bot: commands.Bot) -> None:
+    bot.add_cog(PeakyToolsMessageListener(bot))
+    bot.add_cog(PeakyToolsExpressionListener(bot))

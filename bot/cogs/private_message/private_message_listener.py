@@ -3,13 +3,12 @@ from __future__ import annotations
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
-import discord
-from discord.ext import commands
+import disnake
+from disnake.ext import commands
 
 from bot.db.repos.private_message_repo import private_message_repo
 from bot.models.private_message_record import PrivateMessageRecord
 from bot.utils.helpers import build_dm_embed, log_dm_embed
-from bot.utils.helpers import build_dm_embed
 from bot.utils.settings import settings
 from bot.utils.logger import logger
 
@@ -19,10 +18,11 @@ class PrivateMessageListener(commands.Cog):
         self.bot = bot
 
     @commands.Cog.listener()
-    async def on_message(self, message: discord.Message) -> None:
+    async def on_message(self, message: disnake.Message) -> None:
         if message.author.bot:
             return
 
+        # Ignore guild messages; only handle DMs
         if message.guild is not None:
             return
 

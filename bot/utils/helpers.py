@@ -3,8 +3,8 @@ from pathlib import Path
 import re
 import httpx
 
-import discord
-from discord.ext import commands
+import disnake
+from disnake.ext import commands
 
 from bot.models.emoji_payload import EmojiPayload
 from bot.models.role_identifier import RoleIdentifier
@@ -58,11 +58,11 @@ def flatten_newlines_and_strip_str(text: str) -> str:
 
 
 async def get_channel(
-    bot: discord.Client,
+    bot: disnake.Client,
     *,
     channel_id: int,
     user_id: int | None = None,
-) -> discord.abc.Messageable:
+) -> disnake.abc.Messageable:
 
     channel = bot.get_channel(channel_id)
     if channel:
@@ -77,19 +77,19 @@ async def get_channel(
 
 async def build_dm_embed(
     *,
-    guild: discord.Guild | None = None,
+    guild: disnake.Guild | None = None,
     record: PrivateMessageRecord,
-    from_user: discord.User | discord.Member | None = None,
+    from_user: disnake.User | disnake.Member | None = None,
     settings: SettingsManager,
-) -> discord.Embed:
+) -> disnake.Embed:
     guild_name = guild.name if guild else "DM"
 
-    embed = discord.Embed(
+    embed = disnake.Embed(
         title=settings.private_message_title.format(sender_guild_name=guild_name) if (
             settings.private_message_title
         ) else "Private Message",
         description=record.message,
-        color=discord.Color.blurple(),
+        color=disnake.Color.blurple(),
         timestamp=record.created_at,
     )
 
@@ -108,9 +108,9 @@ async def build_dm_embed(
 
 
 async def log_dm_embed(
-    bot: discord.Client,
+    bot: disnake.Client,
     *,
-    embed: discord.Embed,
+    embed: disnake.Embed,
     record: PrivateMessageRecord,
     logger: ConsoleLogger,
     settings: SettingsManager,
@@ -120,7 +120,7 @@ async def log_dm_embed(
             bot,
             channel_id=settings.private_message_log_channel_id,
         )
-        if isinstance(log_channel, discord.TextChannel):
+        if isinstance(log_channel, disnake.TextChannel):
             await log_channel.send(
                 content=f"DM from <@{record.from_user_id}> to <@{record.to_user_id}>:",
                 embed=embed,
@@ -132,7 +132,7 @@ async def log_dm_embed(
 
 
 async def check_command_role_permission(
-    interaction: discord.Interaction,
+    interaction: disnake.Interaction,
     authorized_roles: list[RoleIdentifier]
 ) -> bool:
     if not authorized_roles:
@@ -182,7 +182,7 @@ async def check_command_role_permission(
     return True
 
 
-def extract_reaction_payload_info(payload: discord.RawReactionActionEvent) -> EmojiPayload:
+def extract_reaction_payload_info(payload: disnake.RawReactionActionEvent) -> EmojiPayload:
     parts: list[str | int | None] = [
         get_emoji_as_readable_utf8_str(payload),
         payload.emoji.id,
@@ -198,13 +198,13 @@ def extract_reaction_payload_info(payload: discord.RawReactionActionEvent) -> Em
     )
 
 
-def get_log_channel(bot: commands.Bot) -> discord.TextChannel | None:
+def get_log_channel(bot: commands.Bot) -> disnake.TextChannel | None:
     if settings.reaction_abuser_log_channel_id is None:
         logger.warning("Reaction abuser log channel ID is not configured.")
         return None
 
     channel = bot.get_channel(settings.reaction_abuser_log_channel_id)
-    if channel is None or not isinstance(channel, discord.TextChannel):
+    if channel is None or not isinstance(channel, disnake.TextChannel):
         logger.warning(
             f"Unable to resolve reaction abuser log channel with ID "
             f"{settings.reaction_abuser_log_channel_id}."
@@ -214,7 +214,7 @@ def get_log_channel(bot: commands.Bot) -> discord.TextChannel | None:
     return channel
 
 
-def get_emoji_as_readable_utf8_str(payload: discord.RawReactionActionEvent) -> str | None:
+def get_emoji_as_readable_utf8_str(payload: disnake.RawReactionActionEvent) -> str | None:
     if payload.emoji.name:
         return payload.emoji.name.encode("unicode_escape").decode("ascii")
 
@@ -265,7 +265,7 @@ def encode_emoji_as_renderable(bot: commands.Bot, payload: EmojiPayload) -> str:
     emoji_name, emoji_id = m.group(1), m.group(2)
 
     guild = bot.get_guild(payload.guild_id)
-    emoji_obj = guild and discord.utils.get(guild.emojis, id=int(emoji_id))
+    emoji_obj = guild and disnake.utils.get(guild.emojis, id=int(emoji_id))
 
     if emoji_obj:
         return f"<{'a' if emoji_obj.animated else ''}:{emoji_name}:{emoji_id}>"

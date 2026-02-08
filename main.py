@@ -1,10 +1,10 @@
-import discord
+import disnake
 
 from bot.core.bot import Bot
 from bot.utils.settings import settings
 from bot.utils.logger import logger
 
-intents = discord.Intents.default()
+intents = disnake.Intents.default()
 intents.dm_messages = True
 intents.members = True
 intents.guild_reactions = True
@@ -14,18 +14,18 @@ intents.message_content = True
 
 bot = Bot(
     intents=intents,
-    help_command=None,
+    test_guilds=[settings.bot_guild_id] if settings.debug_mode else None,
 )
 
 
 def main() -> None:
     try:
-        logger.info('Bot is starting up...')
+        logger.info("Bot is starting up...")
         bot.run(settings.discord_token)
     except KeyboardInterrupt:
-        logger.info('Bot is shutting down...')
+        logger.info("Bot is shutting down...")
     finally:
-        logger.info('Bot has exited...')
+        logger.info("Bot has exited...")
 
 
 if __name__ == "__main__":

@@ -1,14 +1,21 @@
-import discord
-from discord import ui
-from typing import Optional
+from __future__ import annotations
+
+from typing import Optional, TYPE_CHECKING
+
+import disnake
+from disnake import ui
 
 from bot.db.repos.private_message_repo import private_message_repo
+
+if TYPE_CHECKING:
+    from bot.cogs.private_message.private_message_commands import PrivateMessageCommands
+
 
 class PrivateMessageListPaginator(ui.View):
     def __init__(
         self,
         *,
-        cog: "PrivateMessageCommands", # type: ignore # forward reference
+        cog: "PrivateMessageCommands",
         user_id: int,
         to_user_id: Optional[int],
         from_user_id: Optional[int],
@@ -28,10 +35,16 @@ class PrivateMessageListPaginator(ui.View):
         self.limit = limit
         self.offset = offset
 
-    async def interaction_check(self, interaction: discord.Interaction) -> bool:
+        self._prev_btn: ui.Button = self.prev_button  # type: ignore[assignment]
+        self._next_btn: ui.Button = self.next_button  # type: ignore[assignment]
+
+        # Initial state
+        self._prev_btn.disabled = (self.offset <= 0)
+
+    async def interaction_check(self, interaction: disnake.MessageInteraction) -> bool:
         return interaction.user.id == self.user_id
 
-    async def _refresh(self, interaction: discord.Interaction) -> None:
+    async def _refresh(self, interaction: disnake.MessageInteraction) -> None:
         records = await private_message_repo.get_latest(
             to_user_id=self.to_user_id,
             from_user_id=self.from_user_id,
@@ -49,18 +62,17 @@ class PrivateMessageListPaginator(ui.View):
             offset=self.offset,
         )
 
-        # Disable/enable buttons based on paging boundaries
-        self.prev_button.disabled = (self.offset <= 0)
-        self.next_button.disabled = (len(records) < self.limit)
+        self._prev_btn.disabled = (self.offset <= 0)
+        self._next_btn.disabled = (len(records) < self.limit)
 
         await interaction.response.edit_message(embed=embed, view=self)
 
-    @ui.button(label="◀ Prev", style=discord.ButtonStyle.secondary)
-    async def prev_button(self, interaction: discord.Interaction, button: ui.Button):
+    @ui.button(label="◀ Prev", style=disnake.ButtonStyle.secondary)
+    async def prev_button(self, button: ui.Button, interaction: disnake.MessageInteraction):
         self.offset = max(0, self.offset - self.limit)
         await self._refresh(interaction)
 
-    @ui.button(label="Next ▶", style=discord.ButtonStyle.secondary)
-    async def next_button(self, interaction: discord.Interaction, button: ui.Button):
+    @ui.button(label="Next ▶", style=disnake.ButtonStyle.secondary)
+    async def next_button(self, button: ui.Button, interaction: disnake.MessageInteraction):
         self.offset += self.limit
         await self._refresh(interaction)

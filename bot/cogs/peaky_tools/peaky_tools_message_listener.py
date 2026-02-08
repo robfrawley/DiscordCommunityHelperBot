@@ -1,8 +1,7 @@
 from __future__ import annotations
 
-import time
-import discord
-from discord.ext import commands
+import disnake
+from disnake.ext import commands
 
 from bot.services.peaky_response_service import PeakyResponseService
 from bot.utils.settings import settings
@@ -19,7 +18,7 @@ class PeakyToolsMessageListener(commands.Cog):
         self.peaky_nice_response_service.shutdown()
 
     @commands.Cog.listener("on_message")
-    async def on_message(self, message: discord.Message) -> None:
+    async def on_message(self, message: disnake.Message) -> None:
         if message.author.id in set(settings.peaky_tools_nice_user_ids):
             await self.peaky_nice_response_service.handle(message)
         else:

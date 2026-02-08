@@ -1,5 +1,6 @@
-from discord import Role
 from dataclasses import dataclass
+
+from disnake import Role
 
 
 @dataclass(frozen=True, slots=True)
@@ -10,7 +11,7 @@ class RoleIdentifier:
         return str(self.id)
 
     def __eq__(self, other: object) -> bool:
-        if isinstance(other, Role) or isinstance(other, RoleIdentifier):
+        if isinstance(other, (Role, RoleIdentifier)):
             return self.id == other.id
 
         if isinstance(other, int):

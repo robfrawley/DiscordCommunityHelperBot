@@ -1,4 +1,4 @@
-from discord.ext import commands
+from disnake.ext import commands
 
 from bot.utils.settings import settings
 from bot.utils.logger import logger
@@ -8,61 +8,57 @@ from bot.db.repos.emoji_payload_repo import emoji_payload_repo
 from bot.db.repos.emoji_abuser_repo import emoji_abuser_repo
 
 
-class Bot(commands.Bot):
+class Bot(commands.InteractionBot):
     def __init__(self, *args, **kwargs):
-        kwargs.setdefault("command_prefix", "__disabled__")
+        kwargs.pop("help_command", None)
+        kwargs.pop("command_prefix", None)
         super().__init__(*args, **kwargs)
 
-    async def setup_hook(self) -> None:
-        logger.debug('Running setup hook...')
+        self._did_startup = False
+
+    async def on_connect(self) -> None:
+        if self._did_startup:
+            return
+
+        self._did_startup = True
+
+        logger.debug("Running startup (on_connect)...")
 
         logger.log_settings(settings)
 
-        logger.info('Setting up database...')
+        logger.info("Setting up database...")
         await database.connect()
         await emoji_payload_repo.init_schema()
         await emoji_abuser_repo.init_schema()
         await private_message_repo.init_schema()
 
-        logger.info('Loading extensions...')
+        logger.info("Loading extensions...")
         if not settings.bot_enabled_cogs:
-            logger.error(
-                'No extensions to load! Enable one in your .env file.')
+            logger.error("No extensions to load! Enable one in your .env file.")
 
         for ext in settings.bot_enabled_cogs:
             try:
-                await self.load_extension(ext)
+                self.load_extension(ext)
                 logger.debug(f'- "{ext}" (success)')
             except Exception as e:
                 logger.warning(f'- "{ext}" (failure: {e})')
 
-        logger.info('Syncing commands...')
-        if settings.debug_mode:
-            guild = await self.fetch_guild(
-                settings.bot_guild_id
-            )
-            self.tree.copy_global_to(guild=guild)
-
-        logger.log_commands(
-            await self.tree.sync(guild=guild or None)
-        )
+        logger.log_commands(self.application_commands)
 
     async def on_ready(self) -> None:
-        logger.debug('Running on-ready hook...')
+        logger.debug("Running on_ready hook...")
 
         if not self.user:
-            raise Exception("Bot user information is None.")
+            raise RuntimeError("Bot user information is None.")
 
-        logger.info(
-            f'User "{self.user.name}" with ID "{self.user.id}" is logged in and ready.'
-        )
+        logger.info(f'User "{self.user.name}" with ID "{self.user.id}" is logged in and ready.')
 
     async def close(self) -> None:
-        logger.debug('Closing Discord connection...')
+        logger.debug("Closing Discord connection...")
         await super().close()
 
         try:
-            logger.debug('Closing database connection...')
+            logger.debug("Closing database connection...")
             await database.close()
         except Exception as e:
-            logger.warning(f'Error closing database connection: {e}')
+            logger.warning(f"Error closing database connection: {e}")

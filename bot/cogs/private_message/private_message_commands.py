@@ -3,14 +3,18 @@ from __future__ import annotations
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
-import discord
-from discord import app_commands
-from discord.ext import commands
+import disnake
+from disnake.ext import commands
 
 from bot.db.repos.private_message_repo import private_message_repo
 from bot.models.private_message_record import PrivateMessageRecord
 from bot.views.private_message_list_paginator import PrivateMessageListPaginator
-from bot.utils.helpers import build_dm_embed, flatten_newlines_and_strip_str, log_dm_embed, check_command_role_permission
+from bot.utils.helpers import (
+    build_dm_embed,
+    flatten_newlines_and_strip_str,
+    log_dm_embed,
+    check_command_role_permission,
+)
 from bot.utils.logger import logger
 from bot.utils.settings import settings, SettingsManager
 
@@ -19,44 +23,40 @@ class PrivateMessageCommands(commands.Cog):
     def __init__(self, bot: commands.Bot) -> None:
         self.bot = bot
 
-    @app_commands.command(
+    @commands.slash_command(
         name="dm_send",
-        description="Send a DM to a user and log the message."
-    )
-    @app_commands.describe(
-        user="The user to DM",
-        message="The message to send"
+        description="Send a DM to a user and log the message.",
     )
     async def dm_send(
         self,
-        interaction: discord.Interaction,
-        user: discord.User,
-        message: str,
+        inter: disnake.ApplicationCommandInteraction,
+        user: disnake.User = commands.Param(description="The user to DM"),
+        message: str = commands.Param(description="The message to send"),
     ) -> None:
-        if not await check_command_role_permission(interaction, settings.command_enabled_roles):
+        if not await check_command_role_permission(inter, settings.command_enabled_roles):
             return
 
-        await interaction.response.defer(ephemeral=True)
+        await inter.response.defer(ephemeral=True)
 
         record = PrivateMessageRecord(
             id=0,
-            from_user_id=interaction.user.id,
+            from_user_id=inter.user.id,
             to_user_id=user.id,
             message=message,
             created_at=datetime.now(tz=ZoneInfo("UTC")),
         )
 
         embed = await build_dm_embed(
-            guild=interaction.guild,
+            guild=inter.guild,
             record=record,
-            from_user=interaction.user,
+            from_user=inter.user,
             settings=settings,
         )
 
         try:
             await user.send(embed=embed)
             logger.info(
-                f'Sent DM to user {user.id} from {interaction.user.id}: '
+                f'Sent DM to user {user.id} from {inter.user.id}: '
                 f'"{flatten_newlines_and_strip_str(record.message)}"'
             )
             await log_dm_embed(
@@ -66,48 +66,54 @@ class PrivateMessageCommands(commands.Cog):
                 settings=settings,
                 logger=logger,
             )
-        except discord.Forbidden:
-            await interaction.followup.send(
+        except disnake.Forbidden:
+            await inter.followup.send(
                 "Can't send a DM to that user (DMs disabled or blocked).",
                 ephemeral=True,
             )
             return
-        except discord.HTTPException as exc:
+        except disnake.HTTPException as exc:
             logger.error(f"Failed to send DM: {exc}")
-            await interaction.followup.send(
+            await inter.followup.send(
                 "Failed to send the DM due to an unexpected error.",
                 ephemeral=True,
             )
             return
 
         await private_message_repo.add(record)
-        await interaction.followup.send(
+        await inter.followup.send(
             f"DM successfully sent to **{user}**.",
             ephemeral=True,
         )
 
-    @app_commands.command(
+    @commands.slash_command(
         name="dm_list",
-        description="List the latest logged DMs."
-    )
-    @app_commands.describe(
-        to_user="Filter by receiving user",
-        from_user="Filter by sending user",
-        limit="Max number of results (default 10, max 25)",
-        offset="Number of results to skip (default 0)",
+        description="List the latest logged DMs.",
     )
     async def dm_list(
         self,
-        interaction: discord.Interaction,
-        to_user: discord.User | None = None,
-        from_user: discord.User | None = None,
-        limit: int = 4,
-        offset: int = 0,
+        inter: disnake.ApplicationCommandInteraction,
+        to_user: disnake.User | None = commands.Param(
+            default=None,
+            description="Filter by receiving user",
+        ),
+        from_user: disnake.User | None = commands.Param(
+            default=None,
+            description="Filter by sending user",
+        ),
+        limit: int = commands.Param(
+            default=4,
+            description="Max number of results (default 10, max 25)",
+        ),
+        offset: int = commands.Param(
+            default=0,
+            description="Number of results to skip (default 0)",
+        ),
     ) -> None:
-        if not await check_command_role_permission(interaction, settings.command_enabled_roles):
+        if not await check_command_role_permission(inter, settings.command_enabled_roles):
             return
 
-        await interaction.response.defer(ephemeral=True)
+        await inter.response.defer(ephemeral=True)
 
         limit = max(1, min(int(limit), 25))
         offset = max(0, int(offset))
@@ -122,8 +128,8 @@ class PrivateMessageCommands(commands.Cog):
         to_user_id = to_user.id if to_user else None
         from_user_id = from_user.id if from_user else None
 
-        to_user_label = (to_user.display_name if to_user else None)
-        from_user_label = (from_user.display_name if from_user else None)
+        to_user_label = to_user.display_name if to_user else None
+        from_user_label = from_user.display_name if from_user else None
 
         embed = self._build_dm_list_embed(
             records=records,
@@ -137,7 +143,7 @@ class PrivateMessageCommands(commands.Cog):
 
         view = PrivateMessageListPaginator(
             cog=self,
-            user_id=interaction.user.id,
+            user_id=inter.user.id,
             to_user_id=to_user_id,
             from_user_id=from_user_id,
             to_user_label=to_user_label,
@@ -149,7 +155,7 @@ class PrivateMessageCommands(commands.Cog):
         view.prev_button.disabled = (offset <= 0)
         view.next_button.disabled = (len(records) < limit)
 
-        await interaction.followup.send(embed=embed, view=view, ephemeral=True)
+        await inter.followup.send(embed=embed, view=view, ephemeral=True)
 
     def _build_dm_list_embed(
         self,
@@ -161,7 +167,7 @@ class PrivateMessageCommands(commands.Cog):
         from_user_label: str | None,
         limit: int,
         offset: int,
-    ) -> discord.Embed:
+    ) -> disnake.Embed:
         if to_user_id and not to_user_label:
             to_user_label = f"User {to_user_id}"
         if from_user_id and not from_user_label:
@@ -176,7 +182,7 @@ class PrivateMessageCommands(commands.Cog):
         else:
             title = "Latest logged DMs"
 
-        embed = discord.Embed(title=f"{title} (latest first)", color=discord.Color.blurple())
+        embed = disnake.Embed(title=f"{title} (latest first)", color=disnake.Color.blurple())
 
         header_bits: list[str] = []
         if from_user_id:
@@ -195,9 +201,10 @@ class PrivateMessageCommands(commands.Cog):
         for r in records:
             ts = int(r.created_at.timestamp())
             msg = flatten_newlines_and_strip_str(r.message)
-            #if len(msg) > 120:
-            #    msg = msg[:117] + "..."
-            lines.append(f"• <t:{ts}:f> **<@{r.from_user_id}> → <@{r.to_user_id}>**:\n  ```\n{msg}\n```")
+            lines.append(
+                f"• <t:{ts}:f> **<@{r.from_user_id}> → <@{r.to_user_id}>**:\n"
+                f"  ```\n{msg}\n```"
+            )
 
         embed.description = header + "\n".join(lines)
         embed.set_footer(text=f"Showing {len(records)} message(s) • offset={offset} • limit={limit}")

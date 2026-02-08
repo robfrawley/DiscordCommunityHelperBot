@@ -3,7 +3,7 @@ import sys
 from typing import Any
 from zoneinfo import ZoneInfo
 
-from discord.app_commands import AppCommand
+from disnake.ext.commands import InvokableApplicationCommand
 from pydantic_settings import BaseSettings
 
 from bot.utils.settings import settings
@@ -65,11 +65,11 @@ class ConsoleLogger:
             self.debug(f'- {label} = "{value}"')
 
     # log synced commands
-    def log_commands(self, synced: list[AppCommand]) -> None:
+    def log_commands(self, synced: set[InvokableApplicationCommand]) -> None:
         entries: list[tuple[str, str]] = []
 
         for command in synced:
-            scope = "global" if command.guild_id is None else f"guild={command.guild_id}"
+            scope = "global"
             entries.append((f"- \"{command.name}\"", scope))
 
         max_len = max((len(cmd) for cmd, _ in entries), default=0)

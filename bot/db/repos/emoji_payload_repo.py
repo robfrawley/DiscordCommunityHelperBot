@@ -43,7 +43,6 @@ class EmojiPayloadRepo:
             auto_commit=False,
         )
 
-        # Optional but recommended for time-window queries by user
         await self.database.execute(
             """
             CREATE INDEX IF NOT EXISTS idx_emoji_payload_user_ts
