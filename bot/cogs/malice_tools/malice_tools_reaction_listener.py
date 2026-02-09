@@ -11,7 +11,7 @@ class MaliceToolsReactionListener(commands.Cog):
         self.bot = bot
         self.target_user_id = int(502928871432257536)
         self.reactor_user_id = int(1371651018882023425)
-        self.blocked_emojis = ["🧓", "👴", "👵", "🧑‍🦳"]
+        self.blocked_emojis = ["🧓", "👴", "👵", "🧑‍🦳", "🫃", "🫄", "🫄"]
 
     def _emoji_equals(self, emoji: disnake.PartialEmoji, blocked_emoji) -> bool:
         # Unicode emoji
@@ -31,12 +31,12 @@ class MaliceToolsReactionListener(commands.Cog):
             return
 
         # Only the specific reactor user
-        if payload.user_id != self.reactor_user_id:
-            return
+        #if payload.user_id != self.reactor_user_id:
+        #    return
 
         # Only the specific emoji (uncomment if you want to enforce)
-        # if not self._emoji_matches(payload.emoji):
-        #     return
+        if not self._emoji_matches(payload.emoji):
+            return
 
         # Fetch channel
         channel = self.bot.get_channel(payload.channel_id)
@@ -59,8 +59,8 @@ class MaliceToolsReactionListener(commands.Cog):
             return
 
         # Only when reacting to the target user's message
-        if message.author.id != self.target_user_id:
-            return
+        #if message.author.id != self.target_user_id:
+        #    return
 
         # Remove reaction from that user
         try:
