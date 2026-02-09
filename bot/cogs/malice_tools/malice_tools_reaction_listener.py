@@ -11,7 +11,7 @@ class MaliceToolsReactionListener(commands.Cog):
         self.bot = bot
         self.target_user_id = int(502928871432257536)
         self.reactor_user_id = int(1371651018882023425)
-        self.blocked_emojis = ["🧓", "👴", "👵", "🧑‍🦳", "🫃", "🫄", "🫄"]
+        self.blocked_emojis = ["🧓", "👴", "👵", "🧑‍🦳", "🫃", "🫄", "🤰"]
 
     def _emoji_equals(self, emoji: disnake.PartialEmoji, blocked_emoji) -> bool:
         # Unicode emoji
