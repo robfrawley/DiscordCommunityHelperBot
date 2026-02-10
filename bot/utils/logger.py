@@ -31,7 +31,19 @@ class ConsoleLogger:
 
         for key, value in dataset.items():
             label = f'"{key}"'.ljust(max_len + 2)
-            self.info(f'- {label} = "{value}"')
+            self.info(f'-> {label} = "{value}"')
+
+    def notice(self, message: str | None) -> None:
+        self._log("NOTE", message, level_color="32;1")
+
+    def notice_dataset(self, message: str, dataset: dict[Any, Any]) -> None:
+        self.notice(f"{message}:")
+
+        max_len = max((len(str(key)) for key in dataset.keys()), default=0)
+
+        for key, value in dataset.items():
+            label = f'"{key}"'.ljust(max_len + 2)
+            self.notice(f'-> {label} = "{value}"')
 
     def debug(self, message: str | None) -> None:
         if self.debug_enabled:
@@ -44,17 +56,34 @@ class ConsoleLogger:
 
         for key, value in dataset.items():
             label = f'"{key}"'.ljust(max_len + 2)
-            self.debug(f'- {label} = "{value}"')
+            self.debug(f'-> {label} = "{value}"')
 
     def warning(self, message: str | None) -> None:
         self._log("WARN", message, level_color="91")
 
+    def warning_dataset(self, message: str, dataset: dict[Any, Any]) -> None:
+        self.warning(f"{message}:")
+        max_len = max((len(str(key)) for key in dataset.keys()), default=0)
+
+        for key, value in dataset.items():
+            label = f'"{key}"'.ljust(max_len + 2)
+            self.warning(f'-> {label} = "{value}"')
+
     def error(self, message: str | None) -> None:
         self._log("CRIT", message, level_color="91;1")
 
+    def error_dataset(self, message: str, dataset: dict[Any, Any]) -> None:
+        self.error(f"{message}:")
+
+        max_len = max((len(str(key)) for key in dataset.keys()), default=0)
+
+        for key, value in dataset.items():
+            label = f'"{key}"'.ljust(max_len + 2)
+            self.error(f'-> {label} = "{value}"')
+
     # log complete settings dump loaded from environment
     def log_settings(self, settings: BaseSettings) -> None:
-        self.info("Loaded configuration...")
+        self.info("[ConsoleLogger:log_settings] Loaded configuration...")
 
         fields = settings.__class__.model_fields.keys()
         values = {field: getattr(settings, field) for field in fields}
@@ -62,7 +91,7 @@ class ConsoleLogger:
 
         for name, value in values.items():
             label = f'"{name}"'.ljust(max_len + 2)
-            self.debug(f'- {label} = "{value}"')
+            self.debug(f'-> {label} = "{value}"')
 
     # log synced commands
     def log_commands(self, synced: set[InvokableApplicationCommand]) -> None:
@@ -70,11 +99,11 @@ class ConsoleLogger:
 
         for command in synced:
             scope = "global"
-            entries.append((f"- \"{command.name}\"", scope))
+            entries.append((f"-> \"{command.name}\"", scope))
 
         max_len = max((len(cmd) for cmd, _ in entries), default=0)
 
-        logger.debug(f'Synced "{len(synced)}" commands...')
+        logger.debug(f'[ConsoleLogger:log_commands] Synced "{len(synced)}" commands...')
 
         for cmd, scope in entries:
             logger.debug(f'{cmd.ljust(max_len)} ({scope})')

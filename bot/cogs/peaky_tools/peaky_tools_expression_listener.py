@@ -172,12 +172,12 @@ class PeakyToolsExpressionListener(commands.Cog):
         current_ids = {s.id for s in current}
         old_ids = self.known_stickers.get(guild.id, set())
 
-        logger.debug(f"[PeakyAssetLogger] Current stickers: {current_ids}")
-        logger.debug(f"[PeakyAssetLogger] Known stickers: {old_ids}")
+        logger.debug(f"[PeakyAssetLogger:on_guild_stickers_update] Current stickers  -> \"{current_ids if current_ids else '(none)'}\"")
+        logger.debug(f"[PeakyAssetLogger:on_guild_stickers_update] Known stickers    -> \"{old_ids if old_ids else '(none)'}\"")
 
         added_ids = current_ids - old_ids
 
-        logger.debug(f"[PeakyAssetLogger] Added sticker IDs: {added_ids}")
+        logger.debug(f"[PeakyAssetLogger:on_guild_stickers_update] Added sticker IDs -> \"{added_ids if added_ids else '(none)'}\"")
 
         if not added_ids:
             self.known_stickers[guild.id] = current_ids
@@ -202,7 +202,7 @@ class PeakyToolsExpressionListener(commands.Cog):
                 created_at=self._asset_created_at(sticker),
             )
             await self._post_asset_log(guild=guild, embed=embed, uploader=uploader)
-            logger.info(f"[PeakyAssetLogger] Logged new STICKER \"{sticker.name}\" ({sticker.id}) in guild \"{guild.id}\" from uploader \"{uploader}\"")
+            logger.info(f"[PeakyAssetLogger:on_guild_stickers_update] Logged new STICKER \"{sticker.name}\" ({sticker.id}) in guild \"{guild.id}\" from uploader \"{uploader}\"")
 
         self.known_stickers[guild.id] = current_ids
 
@@ -242,6 +242,7 @@ class PeakyToolsExpressionListener(commands.Cog):
                 created_at=self._asset_created_at(emoji),
             )
             await self._post_asset_log(guild=guild, embed=embed, uploader=uploader)
+            logger.info(f"[PeakyAssetLogger:on_guild_emojis_update] Logged new EMOJI \"{emoji.name}\" ({emoji.id}) in guild \"{guild.id}\" from uploader \"{uploader}\"")
 
     @commands.slash_command(
         name="peaky_assets_dump",
@@ -320,7 +321,7 @@ class PeakyToolsExpressionListener(commands.Cog):
         # Sort by added date (oldest -> newest).
         timeline.sort(key=lambda t: t[0])
 
-        logger.info(f"[PeakyAssetLogger] Dumping {len(timeline)} assets in guild \"{guild.id}\" to channel \"{chan_id}\".")
+        logger.info(f"[PeakyAssetLogger:peaky_assets_dump] Dumping {len(timeline)} assets in guild \"{guild.id}\" to channel \"{chan_id}\".")
 
         # Post in date order, interleaving emojis + stickers
         for created_at, kind, obj in timeline:
@@ -351,7 +352,7 @@ class PeakyToolsExpressionListener(commands.Cog):
                     reason=reason,
                     created_at=created_at,
                 )
-            logger.debug(f"[PeakyAssetLogger] Logged new {kind.upper()} \"{obj.name}\" ({obj.id}) in guild \"{guild.id}\" from uploader \"{uploader}\"")
+            logger.info(f"[PeakyAssetLogger:peaky_assets_dump] Logged new {kind.upper()} \"{obj.name}\" ({obj.id}) in guild \"{guild.id}\" from uploader \"{uploader}\"")
 
             await self._post_asset_log(guild=guild, embed=embed, uploader=uploader)
             await asyncio.sleep(0.2)  # gentle pacing
@@ -375,8 +376,8 @@ class PeakyToolsExpressionListener(commands.Cog):
             ):
                 entries.append(entry)
         except disnake.Forbidden:
-            logger.warning(f"[AssetLogger] Missing View Audit Log in guild {guild.id}")
+            logger.warning(f"[PeakyAssetLogger:_fetch_audit_entries_paginated] Missing View Audit Log in guild {guild.id}")
         except disnake.HTTPException as e:
-            logger.warning(f"[AssetLogger] audit_logs fetch failed in guild {guild.id}: {e}")
+            logger.warning(f"[PeakyAssetLogger:_fetch_audit_entries_paginated] audit_logs fetch failed in guild {guild.id}: {e}")
 
         return entries

@@ -37,7 +37,7 @@ class ReactionAbuserListener(commands.Cog):
             return
 
         emoji_add_payload: EmojiPayload = extract_reaction_payload_info(payload)
-        logger.debug(f"Reaction added: {emoji_add_payload}")
+        #logger.debug(f"Reaction added: {emoji_add_payload}")
         await emoji_payload_repo.add(emoji_add_payload)
 
     @commands.Cog.listener()
@@ -46,7 +46,7 @@ class ReactionAbuserListener(commands.Cog):
             return
 
         emoji_del_payload: EmojiPayload = extract_reaction_payload_info(payload)
-        logger.debug(f"Reaction removed: {emoji_del_payload}")
+        #logger.debug(f"Reaction removed: {emoji_del_payload}")
 
         emoji_add_payload: EmojiPayload | None = await emoji_payload_repo.get_and_delete(emoji_del_payload)
         if emoji_add_payload is None:
@@ -57,7 +57,7 @@ class ReactionAbuserListener(commands.Cog):
         logger.debug(f"Time difference between add and remove: {time_diff} seconds")
 
         if time_diff <= settings.reaction_abuser_reacted_time_window_seconds:
-            logger.info(
+            logger.notice(
                 f"Detected reaction abuser: User {emoji_del_payload.user_id} "
                 f"on Message {emoji_del_payload.message_id} "
                 f"with Emoji '{emoji_del_payload.emoji}' "
@@ -65,7 +65,8 @@ class ReactionAbuserListener(commands.Cog):
             )
             await emoji_abuser_repo.add(emoji_del_payload)
         else:
-            logger.debug("Reaction removal outside of abuser time window; no action taken.")
+            #logger.debug("Reaction removal outside of abuser time window; no action taken.")
+            pass
 
     @tasks.loop(minutes=60)
     async def every_sixty_minutes_task(self) -> None:

@@ -29,25 +29,28 @@ class PeakyToolsExpressionCommands(commands.Cog):
 
     def __init__(self, bot: commands.Bot) -> None:
         self.bot = bot
-        self.cleanup_task.start()
+        self.sync_expressions_task.start()
 
     def cog_unload(self):
-        self.cleanup_task.cancel()
+        self.sync_expressions_task.cancel()
 
     @tasks.loop(minutes=settings.peaky_tools_expression_sync_interval_minutes)
-    async def cleanup_task(self):
+    async def sync_expressions_task(self):
+        logger.info(f"[PeakyToolsExpressionCommands:sync_expressions_task] Running task...")
+
         guild = await resolve_guild(self.bot, settings.bot_guild_id)
 
         if guild is None:
-            logger.error(f"Guild not found or inaccessible ({settings.bot_guild_id}); cannot perform cleanup.")
+            logger.error(f"Guild not found or inaccessible ({settings.bot_guild_id}); cannot perform sync.")
             return
 
         item_count = await self._rescan_and_resync(guild)
 
-        logger.debug(f"Rescan complete. Total items: {item_count}")
+        logger.info(f"[PeakyToolsExpressionCommands:sync_expressions_task] Finished task...")
 
-    @cleanup_task.before_loop
-    async def before_cleanup(self):
+    @sync_expressions_task.before_loop
+    async def before_sync_expressions(self):
+        logger.debug(f"[PeakyToolsExpressionCommands:before_sync_expressions] Waiting for bot to be ready...")
         await self.bot.wait_until_ready()
 
     @commands.slash_command(
@@ -73,16 +76,15 @@ class PeakyToolsExpressionCommands(commands.Cog):
             return None
 
         deleted_count = await expression_item_repo.del_all()
-        logger.info(f"Deleted {deleted_count} existing expression items.")
+        #if deleted_count > 0:
+        #    logger.debug(f"[PeakyToolsExpressionCommands:_rescan_and_resync] Deleted {deleted_count} existing expression items.")
 
         found_channel_expressions = await self._scan_channel_expressions(channel)
-        logger.info(f"Found {len(found_channel_expressions)} expression items in the log channel")
+        #logger.info(f"Found {len(found_channel_expressions)} expression items in the log channel")
 
         for expression_item in found_channel_expressions:
-            logger.debug(f"Adding expression item: {expression_item}")
+            #logger.debug(f"Adding expression item: {expression_item}")
             await expression_item_repo.add(expression_item)
-
-        logger.info("Rescan complete.")
 
         all_items = await expression_item_repo.get_all()
 
@@ -92,12 +94,12 @@ class PeakyToolsExpressionCommands(commands.Cog):
             #pprint(expression)
 
             if expression is None:
-                logger.warning(f" -> Could not resolve expression for item ID {item.id}, removing from database and from log (message ID {item.message_id}).")
+                logger.notice(f"[PeakyToolsExpressionCommands:_rescan_and_resync] Could not resolve expression for item ID {item.id}, removing from database and from log (message ID {item.message_id}).")
                 await expression_item_repo.delete(item)
                 await self._remove_log_message_from_expression(channel, item)
             else:
                 if expression.name != item.name:
-                    logger.warning(f" -> Name mismatch for item ID {item.id}: expected '{item.name}', got '{expression.name}'. Updating database record.")
+                    logger.notice(f"[PeakyToolsExpressionCommands:_rescan_and_resync] Name mismatch for item ID {item.id}: expected '{item.name}', got '{expression.name}'. Updating...")
                     updated_item = ExpressionItem(
                         id=item.id,
                         name=expression.name,
@@ -123,6 +125,70 @@ class PeakyToolsExpressionCommands(commands.Cog):
                         ),
                         uploader=await resolve_user(self.bot, item.uploader_id) if item.uploader_id else None,
                     )
+
+        all_items = await expression_item_repo.get_all()
+
+        for e in await guild.fetch_emojis():
+            if not any(item.id == e.id for item in all_items if item.type == ExpressionItemType.EMOJI):
+                logger.notice(f"[PeakyToolsExpressionCommands:_rescan_and_resync] Emoji \"{e.name}\" ({e.id}) exists in guild but not in database; adding...")
+                new_item = ExpressionItem(
+                    id=e.id,
+                    name=e.name,
+                    type=ExpressionItemType.EMOJI,
+                    uploader_id=e.user.id if e.user else None,
+                    message_id=None,
+                    created_at=int(e.created_at.timestamp()),
+                    link=str(e.url),
+                )
+                await expression_item_repo.add(new_item)
+                embed = asset_embed(
+                    guild=guild,
+                    kind="Emoji",
+                    name=e.name,
+                    asset_id=e.id,
+                    preview_url=str(e.url),
+                    uploader=e.user if e.user else None,
+                    created_at=int(e.created_at.timestamp()),
+                    reason=None,
+                )
+                log_channel = await self._get_log_channel(guild)
+
+                if log_channel is not None:
+                    msg = await log_channel.send(content=e.user.mention if e.user else None, embed=embed)
+                    new_item.message_id = msg.id
+                    await expression_item_repo.update(new_item)
+
+        for e in await guild.fetch_stickers():
+            if not any(item.id == e.id for item in all_items if item.type == ExpressionItemType.STICKER):
+                logger.notice(f"[PeakyToolsExpressionCommands:_rescan_and_resync] Sticker \"{e.name}\" ({e.id}) exists in guild but not in database; adding...")
+                new_item = ExpressionItem(
+                    id=e.id,
+                    name=e.name,
+                    type=ExpressionItemType.STICKER,
+                    uploader_id=e.user.id if e.user else None,
+                    message_id=None,
+                    created_at=int(e.created_at.timestamp()),
+                    link=str(e.url),
+                )
+                await expression_item_repo.add(new_item)
+                embed = asset_embed(
+                    guild=guild,
+                    kind="Sticker",
+                    name=e.name,
+                    asset_id=e.id,
+                    preview_url=str(e.url),
+                    uploader=e.user if e.user else None,
+                    created_at=int(e.created_at.timestamp()),
+                    reason=None,
+                )
+                log_channel = await self._get_log_channel(guild)
+
+                if log_channel is not None:
+                    msg = await log_channel.send(content=e.user.mention if e.user else None, embed=embed)
+                    new_item.message_id = msg.id
+                    await expression_item_repo.update(new_item)
+
+        #logger.info(f"[PeakyToolsExpressionCommands:_rescan_and_resync] Rescan and resync complete. Total valid items: {len(all_items)}.")
 
         return len(all_items)
 
@@ -173,7 +239,7 @@ class PeakyToolsExpressionCommands(commands.Cog):
 
         async for message in channel.history(limit=None, oldest_first=True):
             if not message.embeds:
-                logger.warning(f"Skipping message {message.id} with no embeds.")
+                logger.warning(f"[PeakyToolsExpressionCommands:_scan_channel_expressions] Skipping message {message.id} with no embeds.")
                 continue
 
             embed: disnake.Embed = message.embeds[0]
@@ -214,27 +280,27 @@ class PeakyToolsExpressionCommands(commands.Cog):
             )
 
             if field_id is None:
-                logger.debug(f"Skipping message {message.id} due to missing ID field.")
+                logger.debug(f"[PeakyToolsExpressionCommands:_scan_channel_expressions] Skipping message {message.id} due to missing ID field.")
                 await self._remove_log_message_from_id(channel, message.id)
                 continue
 
             if field_name is None:
-                logger.debug(f"Skipping message {message.id} due to missing name field.")
+                logger.debug(f"[PeakyToolsExpressionCommands:_scan_channel_expressions] Skipping message {message.id} due to missing name field.")
                 await self._remove_log_message_from_id(channel, message.id)
                 continue
 
             if field_created is None:
-                logger.debug(f"Skipping message {message.id} due to missing created field.")
+                logger.debug(f"[PeakyToolsExpressionCommands:_scan_channel_expressions] Skipping message {message.id} due to missing created field.")
                 await self._remove_log_message_from_id(channel, message.id)
                 continue
 
             if field_link is None:
-                logger.debug(f"Skipping message {message.id} due to missing link field.")
+                logger.debug(f"[PeakyToolsExpressionCommands:_scan_channel_expressions] Skipping message {message.id} due to missing link field.")
                 await self._remove_log_message_from_id(channel, message.id)
                 continue
 
             if any(item.id == field_id for item in expressions_list):
-                logger.debug(f"Skipping message {message.id} due to duplicate ID {field_id}.")
+                logger.debug(f"[PeakyToolsExpressionCommands:_scan_channel_expressions] Skipping message {message.id} due to duplicate ID {field_id}.")
                 await self._remove_log_message_from_id(channel, message.id)
                 continue
 
@@ -248,8 +314,9 @@ class PeakyToolsExpressionCommands(commands.Cog):
                 link=field_link,
             )
 
-            logger.debug(f"Found message {message.id} with expression item: {expression}")
             expressions_list.append(expression)
+
+        #logger.debug(f'Found the following expression items in the channel as messages with embeds: {expressions_list}')
 
         return expressions_list
 
@@ -257,17 +324,17 @@ class PeakyToolsExpressionCommands(commands.Cog):
         try:
             msg = await channel.fetch_message(item.message_id)  # type: ignore
             await msg.delete()
-            logger.debug(f"Deleted log message {item.message_id} for item ID {item.id}.")
+            logger.notice(f"[PeakyToolsExpressionCommands:_remove_log_message_from_expression] Deleted log message {item.message_id} for item ID {item.id}.")
         except disnake.NotFound:
-            logger.warning(f"Could not find log message {item.message_id} to delete for item ID {item.id}.")
+            logger.warning(f"[PeakyToolsExpressionCommands:_remove_log_message_from_expression] Could not find log message {item.message_id} to delete for item ID {item.id}.")
 
     async def _remove_log_message_from_id(self, channel: disnake.abc.Messageable, message_id: int | None) -> None:
         try:
             msg = await channel.fetch_message(message_id)  # type: ignore
             await msg.delete()
-            logger.debug(f"Deleted log message {message_id}.")
+            logger.notice(f"[PeakyToolsExpressionCommands:_remove_log_message_from_id] Deleted log message {message_id}.")
         except disnake.NotFound:
-            logger.warning(f"Could not find log message {message_id} to delete.")
+            logger.warning(f"[PeakyToolsExpressionCommands:_remove_log_message_from_id] Could not find log message {message_id} to delete.")
 
     def _extract_field_id(self, embed_field: EmbedField | None) -> int | None:
         value = self._extract_field_data(embed_field, self._EXTRACT_FIELD_ID)

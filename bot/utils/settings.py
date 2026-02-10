@@ -35,7 +35,7 @@ class SettingsManager(BaseSettings):
 
     reaction_abuser_log_channel_id: int | None = Field(default=None)
     reaction_abuser_reacted_time_window_seconds: float = Field(default=2.5)
-    reaction_abuser_warning_time_window_seconds: float = Field(default=3600.0)
+    reaction_abuser_warning_time_window_seconds: float = Field(default=3*60*60) # six hours
     reaction_abuser_warning_max_allowed_removal: int = Field(default=3)
     reaction_abuser_warning_ping_role_id: int | None = Field(default=None)
 

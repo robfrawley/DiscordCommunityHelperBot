@@ -23,44 +23,41 @@ class Bot(commands.InteractionBot):
 
         self._did_startup = True
 
-        logger.debug("Running startup (on_connect)...")
+        logger.debug("[Bot:on_connect] Running startup (on_connect)...")
 
         logger.log_settings(settings)
 
-        logger.info("Setting up database...")
+        logger.info("[Bot:on_connect] Setting up database...")
         await database.connect()
         await emoji_payload_repo.init_schema()
         await emoji_abuser_repo.init_schema()
         await private_message_repo.init_schema()
         await expression_item_repo.init_schema()
 
-        logger.info("Loading extensions...")
+        logger.info("[Bot:on_connect] Loading extensions...")
         if not settings.bot_enabled_cogs:
-            logger.error("No extensions to load! Enable one in your .env file.")
-
+            logger.error("[Bot:on_connect] No extensions to load! Enable one in your .env file.")
         for ext in settings.bot_enabled_cogs:
             try:
                 self.load_extension(ext)
-                logger.debug(f'- "{ext}" (success)')
+                logger.debug(f'-> "{ext}" (success)')
             except Exception as e:
-                logger.warning(f'- "{ext}" (failure: {e})')
+                logger.warning(f'-> "{ext}" (failure: {e})')
 
         logger.log_commands(self.application_commands)
 
     async def on_ready(self) -> None:
-        logger.debug("Running on_ready hook...")
-
         if not self.user:
             raise RuntimeError("Bot user information is None.")
 
-        logger.info(f'User "{self.user.name}" with ID "{self.user.id}" is logged in and ready.')
+        logger.info(f'[Bot:on_ready] Bot user "{self.user.name}" with ID "{self.user.id}" is logged in and ready.')
 
     async def close(self) -> None:
-        logger.debug("Closing Discord connection...")
+        logger.debug("[Bot:close] Closing Discord connection...")
         await super().close()
 
         try:
-            logger.debug("Closing database connection...")
+            logger.debug("[Bot:close] Closing database connection...")
             await database.close()
         except Exception as e:
-            logger.warning(f"Error closing database connection: {e}")
+            logger.warning(f"[Bot:close] Error closing database connection: {e}")
