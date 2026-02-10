@@ -87,7 +87,7 @@ class PeakyToolsExpressionCommands(commands.Cog):
         all_items = await expression_item_repo.get_all()
 
         for item in all_items:
-            expression = await resolve_expression(guild=guild, item=item)
+            expression = await resolve_expression(guild=guild, item=item, force_fetch=True)
             #logger.debug(f" - Expression Item: {item}")
             #pprint(expression)
 
