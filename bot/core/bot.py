@@ -6,6 +6,7 @@ from bot.db.database import database
 from bot.db.repos.private_message_repo import private_message_repo
 from bot.db.repos.emoji_payload_repo import emoji_payload_repo
 from bot.db.repos.emoji_abuser_repo import emoji_abuser_repo
+from bot.db.repos.expression_item_repo import expression_item_repo
 
 
 class Bot(commands.InteractionBot):
@@ -31,6 +32,7 @@ class Bot(commands.InteractionBot):
         await emoji_payload_repo.init_schema()
         await emoji_abuser_repo.init_schema()
         await private_message_repo.init_schema()
+        await expression_item_repo.init_schema()
 
         logger.info("Loading extensions...")
         if not settings.bot_enabled_cogs:

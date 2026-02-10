@@ -13,6 +13,7 @@ from bot.utils.settings import SettingsManager
 from bot.models.private_message_record import PrivateMessageRecord
 from bot.utils.logger import logger
 from bot.utils.settings import settings
+from bot.models.expression_item import ExpressionItem, ExpressionItemType
 
 _LEADING_MENTION_RE = re.compile(
     r"""
@@ -260,7 +261,7 @@ def encode_emoji_as_renderable(bot: commands.Bot, payload: EmojiPayload) -> str:
 
     m = _EMOJI_CUSTOMS_RE.fullmatch(payload.emoji)
     if not m:
-        return payload.emoji  # if you ever store real unicode directly
+        return payload.emoji
 
     emoji_name, emoji_id = m.group(1), m.group(2)
 
@@ -273,3 +274,119 @@ def encode_emoji_as_renderable(bot: commands.Bot, payload: EmojiPayload) -> str:
     # Can't render as emoji -> provide a clickable image link
     url = emoji_cdn_url(emoji_id)
     return f"[`:{emoji_name}:`]({url})"
+
+async def resolve_expression(
+    guild: disnake.Guild,
+    item: ExpressionItem,
+    force_fetch: bool = False,
+) -> disnake.Emoji | disnake.GuildSticker | None:
+    if item.id is None:
+        return None
+
+    match item.type:
+        case ExpressionItemType.EMOJI:
+            emoji = next((e for e in guild.emojis if e.id == item.id), None)
+
+            if emoji is not None and not force_fetch:
+                return emoji
+
+            try:
+                return await guild.fetch_emoji(item.id)
+            except disnake.NotFound:
+                return None
+
+        case ExpressionItemType.STICKER:
+            sticker = next((s for s in guild.stickers if s.id == item.id), None)
+
+            if sticker is not None and not force_fetch:
+                return sticker
+
+            try:
+                return await guild.fetch_sticker(item.id)
+            except disnake.NotFound:
+                return None
+
+    return None
+
+async def resolve_user(
+    bot: disnake.Client,
+    user_id: int,
+    force_fetch: bool = False,
+) -> disnake.User | None:
+    user = bot.get_user(user_id)
+
+    if user is not None and not force_fetch:
+        return user
+
+    try:
+        return await bot.fetch_user(user_id)
+    except disnake.NotFound:
+        return None
+
+
+async def resolve_guild(
+    bot: disnake.Client,
+    guild_id: int,
+    force_fetch: bool = False
+) -> disnake.Guild | None:
+    guild = bot.get_guild(guild_id)
+
+    if guild is not None and not force_fetch:
+        return guild
+
+    try:
+        return await bot.fetch_guild(guild_id)
+    except disnake.NotFound:
+        return None
+
+
+
+def asset_embed(
+    *,
+    guild: disnake.Guild,
+    kind: str,  # "Emoji" or "Sticker"
+    name: str,
+    asset_id: int,
+    preview_url: str | None,
+    uploader: disnake.abc.User | None,
+    reason: str | None,
+    created_at: datetime | int | None = None,
+) -> disnake.Embed:
+    embed = disnake.Embed(
+        title=f"New {kind.upper()} Added",
+        color=disnake.Color.blurple(),
+    )
+
+    embed.add_field(
+        name="Name:",
+        value=f"`{name}`",
+        inline=True,
+    )
+
+    embed.add_field(
+        name="Uploader:",
+        value=(uploader.mention if uploader else "*Unknown*"),
+        inline=True,
+    )
+
+    if created_at is not None:
+        ts = int(created_at.timestamp()) if isinstance(created_at, datetime) else int(created_at)
+        embed.add_field(
+            name="Created:",
+            value=f"<t:{ts}:F> (<t:{ts}:R>)",
+            inline=False,
+        )
+
+    embed.add_field(
+        name="Link:",
+        value=f"{preview_url}" if preview_url else None,
+        inline=False,
+    )
+
+    if reason:
+        embed.add_field(name="Reason", value=reason, inline=False)
+
+    if preview_url:
+        embed.set_thumbnail(url=preview_url)
+
+    return embed

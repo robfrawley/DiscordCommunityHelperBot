@@ -8,7 +8,47 @@ from disnake.ext import commands
 
 from bot.utils.logger import logger
 from bot.utils.settings import settings
+from bot.utils.helpers import asset_embed
 
+class ConfirmDumpView(disnake.ui.View):
+    def __init__(self, author_id: int, timeout: float = 30.0):
+        super().__init__(timeout=timeout)
+        self.author_id = author_id
+        self.confirmed: bool | None = None
+
+    async def interaction_check(self, inter: disnake.MessageInteraction) -> bool:
+        if inter.author.id != self.author_id:
+            await inter.response.send_message(
+                "This confirmation isn’t for you.", ephemeral=True
+            )
+            return False
+        return True
+
+    @disnake.ui.button(label="Confirm", style=disnake.ButtonStyle.danger)
+    async def confirm(
+        self,
+        button: disnake.ui.Button,
+        inter: disnake.MessageInteraction,
+    ):
+        self.confirmed = True
+        await inter.response.edit_message(
+            content="✅ Asset dump confirmed. Starting…",
+            view=None,
+        )
+        self.stop()
+
+    @disnake.ui.button(label="Cancel", style=disnake.ButtonStyle.secondary)
+    async def cancel(
+        self,
+        button: disnake.ui.Button,
+        inter: disnake.MessageInteraction,
+    ):
+        self.confirmed = False
+        await inter.response.edit_message(
+            content="❌ Asset dump cancelled.",
+            view=None,
+        )
+        self.stop()
 
 class PeakyToolsExpressionListener(commands.Cog):
     def __init__(self, bot: commands.Bot) -> None:
@@ -95,63 +135,13 @@ class PeakyToolsExpressionListener(commands.Cog):
                     return u, entry.reason
                 return None, entry.reason
         return None, None
-    def _asset_embed(
-        self,
-        *,
-        guild: disnake.Guild,
-        kind: str,  # "Emoji" or "Sticker"
-        name: str,
-        asset_id: int,
-        preview_url: str | None,
-        uploader: disnake.abc.User | None,
-        reason: str | None,
-        created_at: datetime | None = None,
-    ) -> disnake.Embed:
-        embed = disnake.Embed(
-            title=f"New {kind.upper()} Added",
-            color=disnake.Color.blurple(),
-        )
 
-        embed.add_field(
-            name="Name:",
-            value=f"`{name}`",
-            inline=True,
-        )
+    def _asset_created_at(self, asset: object) -> datetime:
+        asset_id = getattr(asset, "id", None)
+        if isinstance(asset_id, int):
+            return disnake.utils.snowflake_time(asset_id)
 
-        #embed.add_field(
-        #    name="ID:",
-        #    value=f"`{asset_id}`",
-        #    inline=True,
-        #)
-
-        embed.add_field(
-            name="Uploader:",
-            value=(uploader.mention if uploader else "*Unknown*"),
-            inline=True,
-        )
-
-        if created_at is not None:
-            ts = int(created_at.timestamp())
-            embed.add_field(
-                name="Created:",
-                value=f"<t:{ts}:F> (<t:{ts}:R>)",
-                inline=False,
-            )
-
-        embed.add_field(
-            name="Link:",
-            value=f"{preview_url}" if preview_url else None,
-            inline=False,
-        )
-
-        if reason:
-            embed.add_field(name="Reason", value=reason, inline=False)
-
-        if preview_url:
-            embed.set_thumbnail(url=preview_url)
-
-        return embed
-
+        return disnake.utils.utcnow()
 
     async def _post_asset_log(
         self,
@@ -169,13 +159,6 @@ class PeakyToolsExpressionListener(commands.Cog):
         except disnake.HTTPException as e:
             logger.warning(f"[PeakyAssetLogger] Failed to send log message in guild \"{guild.id}\": {e}")
 
-    def _asset_created_at(self, asset: object) -> datetime:
-        asset_id = getattr(asset, "id", None)
-        if isinstance(asset_id, int):
-            return disnake.utils.snowflake_time(asset_id)
-
-        return disnake.utils.utcnow()
-
     @commands.Cog.listener()
     async def on_guild_stickers_update(
         self,
@@ -189,7 +172,13 @@ class PeakyToolsExpressionListener(commands.Cog):
         current_ids = {s.id for s in current}
         old_ids = self.known_stickers.get(guild.id, set())
 
+        logger.debug(f"[PeakyAssetLogger] Current stickers: {current_ids}")
+        logger.debug(f"[PeakyAssetLogger] Known stickers: {old_ids}")
+
         added_ids = current_ids - old_ids
+
+        logger.debug(f"[PeakyAssetLogger] Added sticker IDs: {added_ids}")
+
         if not added_ids:
             self.known_stickers[guild.id] = current_ids
             return
@@ -202,7 +191,7 @@ class PeakyToolsExpressionListener(commands.Cog):
             uploader, reason = self._match_uploader_for_sticker(sticker, audit)
 
             preview_url = getattr(sticker, "url", None)
-            embed = self._asset_embed(
+            embed = asset_embed(
                 guild=guild,
                 kind="Sticker",
                 name=sticker.name,
@@ -235,28 +224,24 @@ class PeakyToolsExpressionListener(commands.Cog):
             self.known_emojis[guild.id] = current_ids
             return
 
-        added = [e for e in current if e.id in added_ids]
+        self.known_emojis[guild.id] = current_ids
 
+        added = [e for e in current if e.id in added_ids]
         audit = await self._fetch_audit_entries(guild, action=disnake.AuditLogAction.emoji_create)
 
         for emoji in added:
             uploader, reason = self._match_uploader_for_emoji(emoji, audit)
-
-            preview_url = str(emoji.url) if getattr(emoji, "url", None) else None
-            embed = self._asset_embed(
+            embed = asset_embed(
                 guild=guild,
                 kind="Emoji",
                 name=emoji.name,
                 asset_id=emoji.id,
-                preview_url=preview_url,
+                preview_url=str(emoji.url) if getattr(emoji, "url", None) else None,
                 uploader=uploader,
                 reason=reason,
                 created_at=self._asset_created_at(emoji),
             )
             await self._post_asset_log(guild=guild, embed=embed, uploader=uploader)
-            logger.info(f"[PeakyAssetLogger] Logged new EMOJI \"{emoji.name}\" ({emoji.id}) in guild \"{guild.id}\" from uploader \"{uploader}\"")
-
-        self.known_emojis[guild.id] = current_ids
 
     @commands.slash_command(
         name="peaky_assets_dump",
@@ -284,10 +269,22 @@ class PeakyToolsExpressionListener(commands.Cog):
             )
             return
 
+        view = ConfirmDumpView(author_id=inter.author.id)
+
         await inter.response.send_message(
-            f"Dumping all emojis and stickers to <#{chan_id}>…",
+            (
+                f"⚠️ This will post **every emoji and sticker** "
+                f"to <#{chan_id}>.\n\n"
+                f"Are you sure you want to continue?"
+            ),
             ephemeral=True,
+            view=view,
         )
+
+        await view.wait()
+
+        if view.confirmed is not True:
+            return
 
         # Authoritative lists
         emojis = await guild.fetch_emojis()
@@ -330,7 +327,7 @@ class PeakyToolsExpressionListener(commands.Cog):
             if kind == "Emoji":
                 e: disnake.Emoji = obj  # type: ignore[assignment]
                 uploader, reason = self._match_uploader_for_emoji(e, emoji_audit)
-                embed = self._asset_embed(
+                embed = asset_embed(
                     guild=guild,
                     kind="Emoji",
                     name=e.name,
@@ -344,7 +341,7 @@ class PeakyToolsExpressionListener(commands.Cog):
                 s: disnake.GuildSticker = obj  # type: ignore[assignment]
                 uploader, reason = self._match_uploader_for_sticker(s, sticker_audit)
                 preview_url = getattr(s, "url", None)
-                embed = self._asset_embed(
+                embed = asset_embed(
                     guild=guild,
                     kind="Sticker",
                     name=s.name,
