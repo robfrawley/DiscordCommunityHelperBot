@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from pprint import pprint
+import asyncio
 import re
 from typing import Protocol
 
@@ -93,8 +93,8 @@ class PeakyToolsExpressionCommands(commands.Cog):
 
         for item in all_items:
             expression = await resolve_expression(guild=guild, item=item, force_fetch=True)
-            #logger.debug(f" - Expression Item: {item}")
-            #pprint(expression)
+            await asyncio.sleep(0.2)  # gentle pacing
+            #logger.debug(f" - Expression Item: {item} / {expression}")
 
             if expression is None:
                 logger.notice(f"[PeakyToolsExpressionCommands:_rescan_and_resync] Could not resolve expression for item ID {item.id}, removing from database and from log (message ID {item.message_id}).")
