@@ -34,7 +34,7 @@ class PeakyToolsExpressionCommands(commands.Cog):
     def cog_unload(self):
         self.cleanup_task.cancel()
 
-    @tasks.loop(minutes=5)
+    @tasks.loop(minutes=settings.peaky_tools_expression_sync_interval_minutes)
     async def cleanup_task(self):
         guild = await resolve_guild(self.bot, settings.bot_guild_id)
 

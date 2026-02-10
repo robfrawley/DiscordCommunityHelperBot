@@ -52,6 +52,7 @@ class SettingsManager(BaseSettings):
     peaky_tools_max_output_tokens: int = Field(default=48)
     peaky_tools_request_timeout_seconds: float = Field(default=60.0)
     peaky_tools_target_embed_exclusions: list[str] = Field(default_factory=list)
+    peaky_tools_expression_sync_interval_minutes: int = Field(default=30)
 
     openai_api_key: str = Field(default="")
     openai_mean_model: str = Field(default="gpt-5.2")
