@@ -166,8 +166,6 @@ class PeakyToolsExpressionListener(commands.Cog):
         before: list[disnake.GuildSticker],
         after: list[disnake.GuildSticker],
     ) -> None:
-        return
-
         await self._seed_stickers(guild)
 
         current = await guild.fetch_stickers()

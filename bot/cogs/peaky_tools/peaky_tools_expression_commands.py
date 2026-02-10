@@ -44,7 +44,10 @@ class PeakyToolsExpressionCommands(commands.Cog):
             logger.error(f"Guild not found or inaccessible ({settings.bot_guild_id}); cannot perform sync.")
             return
 
-        item_count = await self._rescan_and_resync(guild)
+        try:
+            await self._rescan_and_resync(guild)
+        except Exception as e:
+            logger.error(f"[PeakyToolsExpressionCommands:sync_expressions_task] Catch exception: {e}")
 
         logger.info(f"[PeakyToolsExpressionCommands:sync_expressions_task] Finished task...")
 
