@@ -26,7 +26,9 @@ class SettingsManager(BaseSettings):
     bot_enabled_cogs: list[str] = Field(default_factory=list)
 
     command_enabled_roles: list[RoleIdentifier] = Field(default_factory=list)
+    command_enabled_adult_roles: list[RoleIdentifier] = Field(default_factory=list)
     command_enabled_elevated_roles: list[RoleIdentifier] = Field(default_factory=list)
+    adult_role_ids: list[RoleIdentifier] = Field(default_factory=list)
 
     private_message_title: str = Field(default="Private Message from {sender_guild_name}")
     private_message_footer: str = Field(default="Sent by {sender_username} in {sender_guild_name}")
@@ -109,7 +111,9 @@ class SettingsManager(BaseSettings):
 
     @field_validator(
         "command_enabled_roles",
+        "command_enabled_adult_roles",
         "command_enabled_elevated_roles",
+        "adult_role_ids",
         mode="before"
     )
     @classmethod

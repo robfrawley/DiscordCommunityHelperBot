@@ -4,6 +4,7 @@ import re
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from collections import Counter
+from enum import Enum
 
 import disnake
 from disnake.ext import commands
@@ -138,9 +139,194 @@ class ApplyRolesResult:
     failures: Counter
 
 
+class AdaultRoleAction(Enum):
+    ADD = "add"
+    REMOVE = "remove"
+
+
 class UtilityCommands(commands.Cog):
     def __init__(self, bot: commands.Bot) -> None:
         self.bot = bot
+
+    async def adult_add_or_remove_role(
+        self,
+        inter: disnake.ApplicationCommandInteraction,
+        to_members: str = commands.Param(
+            default=None,
+            description="Members to apply the role to (mentions/IDs/names).",
+        ),
+        action: AdaultRoleAction = commands.Param(
+            default=AdaultRoleAction.REMOVE,
+            description="Action to perform (add/remove).",
+        ),
+    ) -> None:
+        if not await check_command_role_permission(inter, settings.command_enabled_adult_roles):
+            return
+
+        if not inter.guild:
+            await inter.response.send_message("This command can only be used in a server.", ephemeral=True)
+            return
+
+        guild = inter.guild
+        if guild is None:
+            await inter.response.send_message("This command can only be used in a server.", ephemeral=True)
+            return
+
+        await inter.response.defer(ephemeral=True, with_message=True)
+        logger.debug(f'Initiating /adult{"verify" if action == AdaultRoleAction.ADD else "unverify"} command by user {inter.user} ({inter.user.id}) in guild {guild.name} ({guild.id}) with input: {to_members!r}')
+        try:
+            apply_roles_list = _parse_roles(inter, " " + " ".join(r.mention() for r in settings.adult_role_ids))
+            to_members_list = _parse_members(inter, to_members) if to_members else None
+            roles_str = ", ".join(r.mention() for r in settings.adult_role_ids)
+            members_str = ", ".join(m.mention for m in to_members_list) if to_members_list else ""
+        except ValueError as e:
+            await inter.followup.send(str(e), ephemeral=True)
+            return
+
+        if self.bot.user is None:
+            await inter.followup.send("Bot user information is not available.", ephemeral=True)
+            return
+
+        me = guild.me or guild.get_member(self.bot.user.id)  # type: ignore[union-attr]
+        if me is None:
+            await inter.followup.send("Couldn't resolve the bot member in this guild.", ephemeral=True)
+            return
+
+        if not me.guild_permissions.manage_roles:
+            await inter.followup.send("I need **Manage Roles** permission to do that.", ephemeral=True)
+            return
+
+        if to_members_list is None:
+            await inter.followup.send("No members specified. Please specify members to apply the role to.", ephemeral=True)
+            return
+
+        preview_embed = disnake.Embed(
+            title=f"Confirm role {'assignment' if action == AdaultRoleAction.ADD else 'removal'}",
+            description="Click **confirm** to apply the roles as specified below.\n\n",
+        )
+        preview_embed.add_field(name=f"{'Add' if action == AdaultRoleAction.ADD else 'Remove'} Roles", value=roles_str, inline=False)
+        preview_embed.add_field(name="To Users", value=members_str, inline=False)
+
+        view = ConfirmApplyRolesView(requester_id=inter.user.id, timeout=60.0)
+        confirm_msg = await inter.followup.send(embed=preview_embed, view=view, ephemeral=True, wait=True)
+
+        await view.wait()
+
+        if view.confirmed is None:
+            try:
+                await confirm_msg.edit(content="⌛ Timed out. No roles were changed.", embed=None, view=None)
+            except Exception:
+                pass
+            return
+
+        if view.confirmed is False:
+            return
+
+        now = datetime.now(timezone.utc)
+        reason = f"/adultverify by {inter.user} ({inter.user.id}) at {now.isoformat()}"
+
+        failures: Counter[str] = Counter()
+        attempted = 0
+        updated = 0
+        skipped_already_had_all = 0
+        skipped_excluded_role = 0
+
+        for member in to_members_list:
+            if all(r in member.roles for r in apply_roles_list) and action == AdaultRoleAction.ADD:
+                logger.debug(
+                    f'Skipping member {member.name} with ID "{member.id}" (already has all requested roles)...'
+                )
+                skipped_already_had_all += 1
+                continue
+
+            attempted += 1
+            try:
+                if action == AdaultRoleAction.ADD:
+                    await member.add_roles(*apply_roles_list, reason=reason)
+                else:
+                    await member.remove_roles(*apply_roles_list, reason=reason)
+                updated += 1
+                logger.info(f'Applied roles to member {member.name} with ID "{member.id}".')
+            except disnake.Forbidden:
+                failures["forbidden"] += 1
+                logger.error(f"Error applying roles to {member.id} in guild {guild.id}: Forbidden")
+            except disnake.HTTPException:
+                failures["http_exception"] += 1
+                logger.error(f"Error applying roles to {member.id} in guild {guild.id}: HTTPException")
+            except Exception:
+                failures["unknown"] += 1
+                logger.error(f"Error applying roles to {member.id} in guild {guild.id}: General exception")
+
+        result = ApplyRolesResult(
+            total_targets=len(to_members_list),
+            attempted=attempted,
+            updated=updated,
+            skipped_already_had_all=skipped_already_had_all,
+            skipped_excluded_role=skipped_excluded_role,
+            failures=failures,
+        )
+
+        failure_bits: list[str] = [f"{k}: {v}" for k, v in result.failures.most_common()] if result.failures else []
+        failures_str = " | ".join(failure_bits) if failure_bits else "None"
+
+        embed = disnake.Embed(
+            title=f"Role {'application' if action == AdaultRoleAction.ADD else 'removal'} complete",
+            description=f"Applied: {roles_str}",
+            timestamp=now,
+        )
+        embed.add_field(name=f"{'Applied' if action == AdaultRoleAction.ADD else 'Removed'} roles", value=roles_str, inline=False)
+        embed.add_field(name="Targets", value=str(result.total_targets), inline=True)
+        embed.add_field(name="Attempted", value=str(result.attempted), inline=True)
+        embed.add_field(name="Updated", value=str(result.updated), inline=True)
+        embed.add_field(name="Skipped (Already Had)", value=str(result.skipped_already_had_all), inline=True)
+        embed.add_field(name="Skipped (Excluded Role)", value=str(result.skipped_excluded_role), inline=True)
+        embed.add_field(name="Failures", value=failures_str, inline=False)
+
+        await inter.followup.send(embed=embed, ephemeral=True)
+
+        logger.debug_dataset(
+            "util_apply_roles completed",
+            {
+                "guild_id": guild.id,
+                "actor_id": inter.user.id,
+                "roles": [r.id for r in apply_roles_list],
+                "target_count": result.total_targets,
+                "attempted": result.attempted,
+                "updated": result.updated,
+                "skipped_already_had_all": result.skipped_already_had_all,
+                "skipped_excluded_role": result.skipped_excluded_role,
+                "failures": dict(result.failures),
+            },
+        )
+
+    @commands.slash_command(
+        name="adult_verify",
+        description="Verify adult users and assign them a configurable role.",
+    )
+    async def adult_verify(
+        self,
+        inter: disnake.ApplicationCommandInteraction,
+        to_members: str = commands.Param(
+            default=None,
+            description="Members to apply the role to (mentions/IDs/names).",
+        ),
+    ) -> None:
+        await self.adult_add_or_remove_role(inter, to_members=to_members, action=AdaultRoleAction.ADD)
+
+    @commands.slash_command(
+        name="adult_unverify",
+        description="Unverify adult users and remove their configurable role.",
+    )
+    async def adult_unverify(
+        self,
+        inter: disnake.ApplicationCommandInteraction,
+        to_members: str = commands.Param(
+            default=None,
+            description="Members to apply the role to (mentions/IDs/names).",
+        ),
+    ) -> None:
+        await self.adult_add_or_remove_role(inter, to_members=to_members, action=AdaultRoleAction.REMOVE)
+
 
     @commands.slash_command(
         name="util_get_all_matching_users",
@@ -161,6 +347,9 @@ class UtilityCommands(commands.Cog):
             description="Exclude bot accounts from the results.",
         ),
     ) -> None:
+        if not await check_command_role_permission(inter, settings.command_enabled_elevated_roles):
+            return
+
         if not inter.guild:
             await inter.response.send_message("This command can only be used in a server.", ephemeral=True)
             return
