@@ -51,7 +51,7 @@ class SettingsManager(BaseSettings):
     peaky_tools_nice_user_ids: list[int] = Field(default_factory=list)
     peaky_tools_max_request_user_id_whitelist: list[int] = Field(default_factory=list)
     peaky_tools_window_seconds: float = Field(default=300.0)
-    peaky_tools_max_requests: int = Field(default=6)
+    peaky_tools_max_requests: int = Field(default=10)
     peaky_tools_max_concurrent_tasks: int = Field(default=8)
     peaky_tools_max_output_tokens: int = Field(default=48)
     peaky_tools_request_timeout_seconds: float = Field(default=60.0)
