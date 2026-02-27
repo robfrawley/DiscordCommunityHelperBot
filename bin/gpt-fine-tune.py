@@ -5,13 +5,14 @@ from pathlib import Path
 
 from dotenv import load_dotenv
 load_dotenv(Path("..") / ".env")
+
 from openai import OpenAI
 
 TRAINING_PATH = Path("training.jsonl")
+EXISTING_FT_MODEL = 'ft:gpt-4.1-mini-2025-04-14:personal::D6Q3Zeb6'  # optional
 BASE_MODEL = "gpt-4.1-mini-2025-04-14"
 N_EPOCHS = 2
 POLL_SECONDS = 30
-
 JOB_METADATA = {
     "project": "discord-snark",
     "dataset": "invisipeak",
@@ -41,7 +42,9 @@ def validate_jsonl(path: Path) -> None:
                     break
 
     if bad:
-        raise ValueError(f"Validation failed: {bad} bad lines (checked {total}). Fix JSONL and retry.")
+        raise ValueError(
+            f"Validation failed: {bad} bad lines (checked {total}). Fix JSONL and retry."
+        )
     print(f"✅ JSONL looks valid ({total} examples).")
 
 
@@ -58,9 +61,11 @@ def wait_for_job(client: OpenAI, job_id: str, poll_seconds: int = 15) -> dict:
 
 
 def main():
-    client = OpenAI(
-        api_key=os.getenv("openai_api_key"),
-    )
+    api_key = os.getenv("OPENAI_API_KEY") or os.getenv("openai_api_key")
+    if not api_key:
+        raise RuntimeError("Missing OPENAI_API_KEY (or openai_api_key) in env/.env")
+
+    client = OpenAI(api_key=api_key)
 
     validate_jsonl(TRAINING_PATH)
 
@@ -70,19 +75,28 @@ def main():
     )
     print(f"✅ Uploaded file: {uploaded.id}")
 
+    # Use existing fine-tuned model as the starting point if provided
+    starting_model = EXISTING_FT_MODEL.strip() if EXISTING_FT_MODEL else BASE_MODEL
+
+    suffix = "invisipeak-v3"
+
     job = client.fine_tuning.jobs.create(
         training_file=uploaded.id,
-        model=BASE_MODEL,
-        suffix="invisipeak-v1",
+        model=starting_model,
+        suffix=suffix,
         method={
             "type": "supervised",
             "supervised": {
                 "hyperparameters": {"n_epochs": N_EPOCHS},
             },
         },
-        metadata=JOB_METADATA,
+        metadata={
+            **JOB_METADATA,
+            "starting_model": starting_model,
+        },
     )
     print(f"✅ Created fine-tune job: {job.id}")
+    print(f"   Starting from: {starting_model}")
 
     final = wait_for_job(client, job.id, poll_seconds=POLL_SECONDS)
 
