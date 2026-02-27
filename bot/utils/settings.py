@@ -42,6 +42,8 @@ class SettingsManager(BaseSettings):
     reaction_abuser_warning_ping_role_id: int | None = Field(default=None)
 
     peaky_tools_enabled: bool = Field(default=True)
+    peaky_tools_mention_enabled: bool = Field(default=True)
+    peaky_tools_replies_enabled: bool = Field(default=True)
 
     peaky_tools_expression_channel_id: int | None = Field(default=None)
 

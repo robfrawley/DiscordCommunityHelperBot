@@ -48,6 +48,7 @@ class PeakyResponseService(commands.Cog):
         )
         self._bg_tasks: set[asyncio.Task[None]] = set()
 
+
     def shutdown(self) -> None:
         for t in list(self._bg_tasks):
             t.cancel()
@@ -60,44 +61,25 @@ class PeakyResponseService(commands.Cog):
         if loop and not loop.is_closed():
             loop.create_task(self._http.aclose())
 
-    async def handle(self, message: disnake.Message) -> None:
-        if not settings.peaky_tools_enabled:
-            return
 
-        if message.author.bot:
-            return
-
-        if message.guild is None:
-            return
-
-        if not message.reference or not message.reference.message_id:
-            return
-
-        channel = self.bot.get_channel(message.channel.id)
-        if channel is None or not isinstance(channel, disnake.abc.Messageable):
-            return
-
-        try:
-            msg = await channel.fetch_message(message.id)
-        except Exception:
-            return
-
+    async def handle(self, msg: disnake.Message, allow_no_ref: bool = False) -> None:
         ref = await self._fetch_referenced_message(msg)
-        if ref is None:
+        if ref is None and not allow_no_ref:
             return
 
-        if ref.author.id not in self._target_ids:
+        if ref and ref.author.id not in self._target_ids:
             return
 
-        if self._is_excluded_embed_title(msg, ref):
+        if self._is_excluded_embed_title(msg, ref or msg):
             return
 
         if self._is_user_throttled(msg):
             return
 
-        task = asyncio.create_task(self._handle_message(msg, ref))
+        task = asyncio.create_task(self._handle_message(msg, ref or msg))
         self._bg_tasks.add(task)
         task.add_done_callback(self._bg_tasks.discard)
+
 
     def _is_excluded_embed_title(self, msg: disnake.Message, ref: disnake.Message) -> bool:
         excluded_titles = tuple(
@@ -121,6 +103,7 @@ class PeakyResponseService(commands.Cog):
                 return True
 
         return False
+
 
     def _is_user_throttled(self, msg: disnake.Message) -> bool:
         now = time.monotonic()
@@ -152,6 +135,7 @@ class PeakyResponseService(commands.Cog):
 
         return False
 
+
     async def _fetch_referenced_message(self, message: disnake.Message) -> disnake.Message | None:
         if not message.reference or not message.reference.message_id:
             return None
@@ -163,6 +147,7 @@ class PeakyResponseService(commands.Cog):
             return await message.channel.fetch_message(message.reference.message_id)
         except (disnake.NotFound, disnake.Forbidden, disnake.HTTPException):
             return None
+
 
     async def _handle_message(self, msg: disnake.Message, ref: disnake.Message) -> None:
         async with self._sem:
@@ -190,6 +175,7 @@ class PeakyResponseService(commands.Cog):
             except (disnake.Forbidden, disnake.HTTPException):
                 return
 
+
     def _generate_system_tone_instructions(self) -> str:
         if not self.nice:
             return (
@@ -213,6 +199,7 @@ class PeakyResponseService(commands.Cog):
             "- Reply must not be mean, negative, or dismissive in any way.\n"
         )
 
+
     def _generate_system_rule_instructions(self) -> str:
         rules: str = (
             "- No slurs, no threats, no hate speech, no hate toward protected groups.\n"
@@ -233,6 +220,7 @@ class PeakyResponseService(commands.Cog):
 
         return rules
 
+
     def _generate_system_open_instructions(self) -> str:
         if not self.nice:
             return (
@@ -243,6 +231,7 @@ class PeakyResponseService(commands.Cog):
             "You are a Discord bot called peaky that posts short, funny, supportive replies.\n"
         )
 
+
     def _generate_system_instructions(self) -> str:
         instructions: str = (
             self._generate_system_open_instructions() +
@@ -251,6 +240,7 @@ class PeakyResponseService(commands.Cog):
         )
 
         return instructions
+
 
     async def _openai_snark(self, *, author_name: str, target_name: str, user_text: str) -> str | None:
         if not settings.openai_api_key:
@@ -318,6 +308,7 @@ class PeakyResponseService(commands.Cog):
 
         return None
 
+
     def _replace_username_with_mention(
         self,
         content: str,
@@ -330,6 +321,7 @@ class PeakyResponseService(commands.Cog):
         content = self._ensure_leading_mention(content, user)
 
         return content
+
 
     def _ensure_leading_mention(
         self,
