@@ -15,3 +15,6 @@ python-dateutil
 
 # Settings Handling
 python-dotenv
+
+# npl
+spacy

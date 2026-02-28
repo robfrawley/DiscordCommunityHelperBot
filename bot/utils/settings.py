@@ -58,6 +58,8 @@ class SettingsManager(BaseSettings):
     peaky_tools_target_embed_exclusions: list[str] = Field(default_factory=list)
     peaky_tools_expression_sync_interval_minutes: int = Field(default=60)
 
+    peaky_tools_nlp_model_name: str = Field(default="en_core_web_trf")
+
     openai_api_key: str = Field(default="")
     openai_mean_model: str = Field(default="gpt-5.2")
     openai_nice_model: str = Field(default="gpt-5.2")

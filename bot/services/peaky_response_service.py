@@ -8,11 +8,15 @@ from collections import defaultdict, deque
 import time
 import disnake
 import httpx
+import spacy
 from disnake.ext import commands
 
 from bot.utils.logger import logger
 from bot.utils.settings import settings
 from bot.utils.helpers import strip_leading_mention
+
+
+USER_MENTION_RE = re.compile(r"(<@!?\d{15,25}>|@\w{1,32})")
 
 
 class PeakyResponseService(commands.Cog):
@@ -47,6 +51,7 @@ class PeakyResponseService(commands.Cog):
             timeout=httpx.Timeout(settings.peaky_tools_request_timeout_seconds),
         )
         self._bg_tasks: set[asyncio.Task[None]] = set()
+        self._nlpnames: spacy.language.Language = spacy.load(settings.peaky_tools_nlp_model_name)
 
 
     def shutdown(self) -> None:
@@ -151,29 +156,80 @@ class PeakyResponseService(commands.Cog):
 
     async def _handle_message(self, msg: disnake.Message, ref: disnake.Message) -> None:
         async with self._sem:
-            logger.debug(
-                f'PeakyTools: Starting generation of peaky message in reply to "{msg.author}@{msg.id}" <- "{ref.author}" (mode: {"nice" if self.nice else "snarky"})'
-            )
+            attempt_count = 0
+            attempt_limit = 6
 
-            snark = await self._openai_snark(
-                author_name=str(msg.author),
-                target_name=str(ref.author),
-                user_text=msg.content or "",
-            )
+            while attempt_count < attempt_limit:
+                attempt_count += 1
 
-            if not snark:
-                return
+                logger.debug(
+                    f'PeakyTools: Starting generation of peaky message in reply to "{msg.author}@{msg.id}" <- "{ref.author}" (mode: {"nice" if self.nice else "snarky"}, attempt: {attempt_count}/{attempt_limit})'
+                )
 
-            logger.debug(
-                f'PeakyTools: Finished generation of peaky message in reply to "{msg.author}@{msg.id}" with result "{snark!r}"'
-            )
+                snark = await self._openai_snark(
+                    author_name=str(msg.author),
+                    target_name=str(ref.author),
+                    user_text=msg.content or "",
+                )
 
-            allowed = disnake.AllowedMentions(users=True, roles=False, everyone=False)
+                snark = self._cleanup_snark_response(snark, msg)
 
-            try:
-                await msg.reply(self._replace_username_with_mention(snark, msg.author), allowed_mentions=allowed)
-            except (disnake.Forbidden, disnake.HTTPException):
-                return
+                if not snark:
+                    logger.warning(
+                        f'PeakyTools: OpenAI request failed for message "{msg.author}@{msg.id}" on attempt {attempt_count}/{attempt_limit}.'
+                    )
+                    await asyncio.sleep(0.2 ** attempt_count)
+                    continue
+
+                logger.debug(
+                    f'PeakyTools: Finished generation of peaky message in reply to "{msg.author}@{msg.id}" with result "{snark!r}"'
+                )
+
+                allowed = disnake.AllowedMentions(users=True, roles=False, everyone=False)
+
+                try:
+                    await msg.reply(snark, allowed_mentions=allowed)
+                    break
+                except (disnake.Forbidden, disnake.HTTPException) as e:
+                    logger.warning(
+                        f'PeakyTools: Sending of message "{msg.author}@{msg.id}" failed on attempt {attempt_count}/{attempt_limit}: {e}'
+                    )
+                    continue
+
+
+    def _cleanup_snark_response(self, response: str | None, msg: disnake.Message) -> str | None:
+        response = (response or "").strip()
+
+        if not response:
+            return None
+
+        spans = [
+            ent for ent in self._nlpnames(response).ents
+            if ent.label_ == "PERSON"
+        ]
+
+        if spans:
+            result = []
+            last_e = 0
+
+            for ent in spans:
+                result.append(response[last_e:ent.start_char])
+                result.append(msg.author.mention)
+                last_e = ent.end_char
+
+            result.append(response[last_e:])
+
+            response = "".join(result).strip()
+
+        if len(response) < 2:
+            return None
+
+        response = self._replace_username_with_mention(
+            response,
+            msg.author
+        )
+
+        return response
 
 
     def _generate_system_tone_instructions(self) -> str:
@@ -206,7 +262,7 @@ class PeakyResponseService(commands.Cog):
             "- Profanity is allowed and encouraged.\n"
             "- No apologies, no disclaimers, no softening language, no em dashes.\n"
             "- Prefer 1 sentence. Prefer short sentences with less than 10 words.\n"
-            "- Start with an @mention of the replier.\n"
+            "- Don't start with a Discord username or displayname @mention of anyone.\n"
             "- If asked, your creator is RMF, but also mention Peaky as being an inspiration.\n"
             "- No tech related jokes.\n"
             "- Don't mention you are an AI language model.\n"
@@ -309,18 +365,24 @@ class PeakyResponseService(commands.Cog):
         return None
 
 
+    def contains_no_user_mention(self, text: str) -> bool:
+        return not bool(USER_MENTION_RE.search(text))
+
+
     def _replace_username_with_mention(
         self,
-        content: str,
+        content: str | None,
         user: disnake.abc.User,
-    ) -> str:
+    ) -> str | None:
         if not content:
-            return content
+            return None
 
-        content = strip_leading_mention(content)
-        content = self._ensure_leading_mention(content, user)
+        return strip_leading_mention(content).strip()
 
-        return content
+        if self.contains_no_user_mention(content):
+            content = self._ensure_leading_mention(content, user)
+
+        return
 
 
     def _ensure_leading_mention(
